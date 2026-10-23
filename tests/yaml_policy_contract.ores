@@ -1,0 +1,23 @@
+import module proxy_yaml from "../src/proxy_yaml";
+import module route_policy from "../src/route_policy";
+import module middleware_policy from "../src/middleware_policy";
+
+pub routine main(): int {
+  val String document = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\n" +
+    "policy:\n  deny_private: true\n  allow_domains: example.test,api.example.test\n  connect_ports: 443\n";
+  val parsed = proxy_yaml.parse(document, "forward");
+  if parsed.is_err(); then stdio.println("FAIL valid fixture"); return 1; fi
+  val snapshot = parsed.unwrap();
+  if proxy_yaml.parse(document + "mode: forward\n", "forward").is_ok(); then
+    stdio.println("FAIL duplicate root"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("  actors: 100", "  actors: 0"), "forward").is_ok(); then
+    stdio.println("FAIL actor admission"); return 1;
+  fi
+  if !route_policy.configured_domain(rt borrow snapshot, "foo.example.test") || route_policy.configured_domain(rt borrow snapshot, "evil-example.test"); then
+    stdio.println("FAIL route/domain boundary"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("  deny_private: true", "  deny_private: false"), "forward").is_ok(); then\n    stdio.println("FAIL egress deny-private"); return 1; fi
+  stdio.println("PASS native forward YAML/policy contract");
+  return 0;
+}
