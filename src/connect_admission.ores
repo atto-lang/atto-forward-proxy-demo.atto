@@ -1,0 +1,54 @@
+// CONNECT admission is a pure request/policy/service-binding plan only.
+// No actor callback, resolver, socket, IP pin or tunneling capability exists.
+import module proxy_yaml from "./proxy_yaml";
+import module proxy_wire from "./proxy_wire";
+import module service_bindings from "./service_bindings";
+import module generation from "./generation";
+
+define module connect_admission as
+  pub define class Intent as
+    pub val int epoch;
+    pub val String hostname;
+    pub val String service_name;
+    pub val String actor_image;
+    // Security guarantee: this field is NEVER true for a pure plan.
+    pub val bool socket_authorized;
+  end
+
+  // A trusted ingress parser must already have checked raw framing, duplicate
+  // Host/TE/CL and authentication *before* this helper is called. This helper
+  // performs no authentication and cannot be used as an egress decision.
+  pub fnc plan(borrow generation.Snapshot snapshot,
+               String request_line, String host_header, String service_name):
+      Result<Intent, String> {
+    if snapshot.configuration.mode != "forward" ||
+      snapshot.configuration.deny_private != "true" ||
+      snapshot.configuration.connect_ports != "443"; then
+      return Err("forward policy and port restriction required");
+    fi
+    val parsed = proxy_wire.connect(request_line, host_header);
+    if parsed.is_err(); then return Err("invalid CONNECT authority"); fi
+    val target = parsed.unwrap();
+    if !proxy_wire.configured_connect(rt borrow snapshot.configuration,
+      rt borrow target); then
+      return Err("CONNECT destination outside domain policy");
+    fi
+    val found = service_bindings.bind(snapshot, service_name);
+    if found.is_err(); then return Err("no declared egress policy actor"); fi
+    val actor = found.unwrap();
+    if actor.kind != "actor" || actor.epoch != snapshot.epoch; then
+      return Err("invalid or stale policy actor binding");
+    fi
+    // A service binding does not grant NET. Only the future runtime transport
+    // may mint an unforgeable scoped connect token after auth + resolved-IP ACL.
+    return Ok(new Intent(snapshot.epoch, target.authority,
+      actor.name, actor.target, false));
+  }
+
+  pub fnc may_connect(borrow Intent intent): bool {
+    // Deliberately fails closed even when request grammar and YAML pass.
+    // Replacing this with 'return intent.socket_authorized' would still be
+    // insufficient until a trusted non-guest-mintable token type exists.
+    return false;
+  }
+end

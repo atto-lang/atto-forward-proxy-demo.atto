@@ -1,0 +1,55 @@
+import module generation from "../src/generation";
+import module connect_admission from "../src/connect_admission";
+
+pub routine main(): int {
+  val String doc = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\nservices:\n  - name: egress-policy\n    kind: actor\n    target: egress-v1\n";
+  val opened = generation.open(doc, "forward");
+  if opened.is_err(); then stdio.println("FAIL valid CONNECT policy YAML"); return 1; fi
+  val supervisor = opened.unwrap();
+  val snapshot = supervisor.snapshot().unwrap();
+  val admitted = connect_admission.plan(rt borrow snapshot,
+    "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
+    "egress-policy");
+  if admitted.is_err(); then stdio.println("FAIL safe intent"); return 1; fi
+  val intent = admitted.unwrap();
+  if intent.hostname != "api.example.test" || intent.epoch != 1 ||
+    intent.actor_image != "egress-v1" || intent.socket_authorized ||
+    connect_admission.may_connect(rt borrow intent); then
+    stdio.println("FAIL symbolic intent leaked egress authority"); return 1;
+  fi
+
+  if connect_admission.plan(rt borrow snapshot,
+      "CONNECT evil.example.invalid:443 HTTP/1.1",
+      "evil.example.invalid:443", "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot,
+      "CONNECT api.example.test:80 HTTP/1.1",
+      "api.example.test:80", "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot,
+      "CONNECT api.example.test:443 HTTP/1.1",
+      "evil.example.test:443", "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot,
+      "CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443", "missing").is_ok() ||
+    connect_admission.plan(rt borrow snapshot,
+      "CONNECT 127.0.0.1:443 HTTP/1.1",
+      "127.0.0.1:443", "egress-policy").is_ok(); then
+    stdio.println("FAIL forbidden CONNECT intent"); return 1;
+  fi
+  if supervisor.prepare(doc.replace_literal("target: egress-v1",
+      "target: egress-v2")).is_err(); then
+    stdio.println("FAIL policy generation stage"); return 1;
+  fi
+  val newer = supervisor.publish(1);
+  if newer.is_err(); then stdio.println("FAIL policy generation publish"); return 1; fi
+  val refreshed = newer.unwrap();
+  val new_intent = connect_admission.plan(rt borrow refreshed,
+    "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
+    "egress-policy");
+  if new_intent.is_err() || new_intent.unwrap().actor_image != "egress-v2" ||
+    new_intent.unwrap().epoch != 2 || new_intent.unwrap().socket_authorized ||
+    intent.actor_image != "egress-v1" || intent.epoch != 1; then
+    stdio.println("FAIL policy generation pin or non-authority"); return 1;
+  fi
+  stdio.println("PASS forward actor policy CONNECT intent; network forbidden");
+  return 0;
+}
