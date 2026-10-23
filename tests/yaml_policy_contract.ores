@@ -17,7 +17,25 @@ pub routine main(): int {
   if !route_policy.configured_domain(rt borrow snapshot, "foo.example.test") || route_policy.configured_domain(rt borrow snapshot, "evil-example.test"); then
     stdio.println("FAIL route/domain boundary"); return 1;
   fi
-  if proxy_yaml.parse(document.replace_literal("  deny_private: true", "  deny_private: false"), "forward").is_ok(); then\n    stdio.println("FAIL egress deny-private"); return 1; fi
+  if proxy_yaml.parse(document.replace_literal("  deny_private: true", "  deny_private: false"), "forward").is_ok(); then
+    stdio.println("FAIL egress deny-private"); return 1; fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "example.test,"), "forward").is_ok(); then
+    stdio.println("FAIL empty allowlist token"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "example..test"), "forward").is_ok(); then
+    stdio.println("FAIL malformed allowlist domain"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "EXAMPLE.test"), "forward").is_ok(); then
+    stdio.println("FAIL noncanonical allowlist domain"); return 1;
+  fi
+  if route_policy.configured_domain(rt borrow snapshot, "x.example.test.") ||
+    route_policy.configured_domain(rt borrow snapshot, "x.example..test") ||
+    route_policy.configured_domain(rt borrow snapshot, "x.EXAMPLE.test"); then
+    stdio.println("FAIL malformed candidate domain"); return 1;
+  fi
+  if proxy_yaml.parse(document + "  # trailing comment\r\n", "forward").is_ok(); then
+    stdio.println("FAIL CR in comment"); return 1;
+  fi
   stdio.println("PASS native forward YAML/policy contract");
   return 0;
 }
