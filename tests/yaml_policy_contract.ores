@@ -36,6 +36,22 @@ pub routine main(): int {
   if proxy_yaml.parse(document + "  # trailing comment\r\n", "forward").is_ok(); then
     stdio.println("FAIL CR in comment"); return 1;
   fi
+  let String domains = "example.test";
+  for (let j = 0; j < 129; j++) {
+    domains = domains + ",example.test";
+  }
+  if proxy_yaml.parse(document.replace_literal("allow_domains: example.test,api.example.test",
+      "allow_domains: " + domains), "forward").is_ok(); then
+    stdio.println("FAIL forward domain budget"); return 1;
+  fi
+  // A bounded native parser must not walk arbitrarily many comment lines.
+  let String padding = "# bounded comment\n";
+  for (let i = 0; i < 12; i++) {
+    padding = padding + padding;
+  }
+  if proxy_yaml.parse(document + padding, "forward").is_ok(); then
+    stdio.println("FAIL YAML line budget"); return 1;
+  fi
   stdio.println("PASS native forward YAML/policy contract");
   return 0;
 }
