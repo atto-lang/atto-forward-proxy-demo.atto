@@ -75,6 +75,32 @@ pub routine main(): int {
     proxy_yaml.valid_header_name("-bad"); then
     stdio.println("FAIL canonical policy header"); return 1;
   fi
+  if !route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443") ||
+    !route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "api.example.test:443"); then
+    stdio.println("FAIL allowlisted CONNECT"); return 1;
+  fi
+  if route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:80") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "evil-example.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test.evil.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "GET",
+      "foo.example.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test@127.0.0.1:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "[::1]:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.EXAMPLE.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "127.0.0.1:443"); then
+    stdio.println("FAIL malformed CONNECT admitted"); return 1;
+  fi
   stdio.println("PASS native forward YAML/policy contract");
   return 0;
 }
