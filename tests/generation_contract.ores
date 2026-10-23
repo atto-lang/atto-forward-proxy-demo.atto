@@ -4,7 +4,7 @@ pub routine main(): int {
     "policy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\n";
   val admission = generation.open(source, "forward");
   if admission.is_err(); then stdio.println("FAIL open"); return 1; fi
-  val control = admission.unwrap();
+  let control = admission.unwrap();
   val first = control.snapshot().unwrap();
   if control.publish(1).is_ok(); then stdio.println("FAIL publish without prepare"); return 1; fi
   if control.prepare(source.replace_literal("allow_domains: example.test", "allow_domains: new.example.test")).is_err(); then
