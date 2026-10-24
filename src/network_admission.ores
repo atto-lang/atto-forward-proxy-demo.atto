@@ -1,0 +1,85 @@
+// Pure supervisor-side pre-dial admission oracle.
+// This module NEVER opens a socket. It composes already-proven request,
+// generation, policy and traffic-control state so a future transport has one
+// fail-closed boundary immediately before minting a real network capability.
+import module generation from "./generation";
+import module route_policy from "./route_policy";
+import module slot_pool from "./slot_pool";
+import module traffic_controls from "./traffic_controls";
+
+define module network_admission as
+  // Produced only by the trusted resolver in a serving runtime. The booleans
+  // are reference-model inputs until std/net exposes an opaque resolved-address
+  // capability. Unknown/IPv6/unclassified addresses must be represented as
+  // dns_pinned=false or public_address=false and therefore fail closed.
+  pub define class ResolvedEndpoint as
+    pub val String hostname;
+    pub val String resolved_ip;
+    pub val String port;
+    pub val bool dns_pinned;
+    pub val bool public_address;
+    pub constructor(String hostname, String resolved_ip, String port,
+                    bool dns_pinned, bool public_address) {
+      self.hostname = hostname;
+      self.resolved_ip = resolved_ip;
+      self.port = port;
+      self.dns_pinned = dns_pinned;
+      self.public_address = public_address;
+    }
+  end
+
+  // Descriptor proving all pure prerequisites agreed at one instant. This is
+  // NOT itself a socket capability and must never be accepted by std/net as a
+  // dial token. The runtime must mint an opaque capability after rechecking the
+  // pinned address at connect time.
+  pub define class ForwardPermit as
+    pub val int epoch;
+    pub val int slot;
+    pub val int nonce;
+    pub val String hostname;
+    pub val String resolved_ip;
+    pub val String port;
+    pub constructor(int epoch, int slot, int nonce, String hostname,
+                    String resolved_ip, String port) {
+      self.epoch = epoch;
+      self.slot = slot;
+      self.nonce = nonce;
+      self.hostname = hostname;
+      self.resolved_ip = resolved_ip;
+      self.port = port;
+    }
+  end
+
+  pub fnc authorize_connect(borrow generation.Snapshot snapshot,
+                            borrow slot_pool.Pool requests,
+                            borrow slot_pool.Handle request,
+                            borrow traffic_controls.WindowDecision rate,
+                            borrow traffic_controls.Breaker breaker,
+                            borrow ResolvedEndpoint endpoint,
+                            int now_ms): Result<ForwardPermit, String> {
+    if snapshot.configuration.mode != "forward" || snapshot.epoch <= 0; then
+      return Err("forward egress requires a valid forward generation");
+    fi
+    if !requests.permits(rt borrow request) ||
+      request.ticket.epoch != snapshot.epoch; then
+      return Err("request lease is stale or belongs to another generation");
+    fi
+    if !rate.permitted || rate.next.epoch != snapshot.epoch; then
+      return Err("rate budget does not admit this generation");
+    fi
+    if !traffic_controls.permits(rt borrow breaker, snapshot.epoch, now_ms); then
+      return Err("circuit breaker denies egress");
+    fi
+    if !endpoint.dns_pinned || !endpoint.public_address ||
+      endpoint.hostname == "" || endpoint.resolved_ip == "" ||
+      endpoint.port != "443"; then
+      return Err("destination is not a pinned public CONNECT endpoint");
+    fi
+    if !route_policy.configured_connect(rt borrow snapshot.configuration,
+      "CONNECT", endpoint.hostname + ":" + endpoint.port); then
+      return Err("CONNECT target is not admitted by the pinned policy");
+    fi
+    return Ok(new ForwardPermit(snapshot.epoch, request.slot, request.nonce,
+      endpoint.hostname, endpoint.resolved_ip, endpoint.port));
+  }
+end
