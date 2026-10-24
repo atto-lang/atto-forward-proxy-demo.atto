@@ -10,13 +10,35 @@ pub routine main(): int {
   if parsed.is_err(); then stdio.println("FAIL valid service YAML"); return 1; fi
   val opened = generation.open(source, "forward");
   if opened.is_err(); then stdio.println("FAIL open service generation"); return 1; fi
+
+  let Array<service_bindings.CodeImage> trusted_images =
+    new Array<service_bindings.CodeImage>();
+  trusted_images.add(new service_bindings.CodeImage("api-v1", "abi-v1", false));
+  trusted_images.add(new service_bindings.CodeImage("api-v2", "abi-v1", false));
+  val trusted = service_bindings.registry(trusted_images);
+  if trusted.is_err(); then stdio.println("FAIL trusted image registry"); return 1; fi
+
+  // YAML alone must never create actor or network authority.
+  let Array<service_bindings.CodeImage> wrong_images =
+    new Array<service_bindings.CodeImage>();
+  wrong_images.add(new service_bindings.CodeImage("other-v1", "abi-v1", false));
+  val wrong = service_bindings.registry(wrong_images).unwrap();
+
   let supervisor = opened.unwrap();
   val old = supervisor.snapshot().unwrap();
-  val allowed = service_bindings.bind(rt borrow old, "api-service");
+  if service_bindings.bind(rt borrow old, rt borrow wrong,
+      "api-service").is_ok(); then
+    stdio.println("FAIL YAML target escaped trusted actor registry"); return 1;
+  fi
+
+  val allowed = service_bindings.bind(rt borrow old, rt borrow trusted.unwrap(),
+    "api-service");
   if allowed.is_err(); then stdio.println("FAIL service bind"); return 1; fi
   val old_bind = allowed.unwrap();
   if old_bind.target != "api-v1" || old_bind.epoch != 1 ||
-    service_bindings.bind(rt borrow old, "ambient-fetch").is_ok(); then
+    old_bind.abi != "abi-v1" || old_bind.network_capable ||
+    service_bindings.bind(rt borrow old, rt borrow trusted.unwrap(),
+      "ambient-fetch").is_ok(); then
     stdio.println("FAIL service capability binding"); return 1;
   fi
   if proxy_yaml.parse(source.replace_literal("target: api-v1",
@@ -25,7 +47,7 @@ pub routine main(): int {
     proxy_yaml.parse(source.replace_literal("services:", "services:\n  - name: api-service\n    kind: actor\n    target: api-v0"), "forward").is_ok(); then
     stdio.println("FAIL invalid service declaration"); return 1;
   fi
-  if service_bindings.reverse_route(rt borrow old,
+  if service_bindings.reverse_route(rt borrow old, rt borrow trusted.unwrap(),
       "api.example.test", "/").is_ok(); then
     stdio.println("FAIL forward cannot pose as reverse route"); return 1;
   fi
@@ -36,12 +58,22 @@ pub routine main(): int {
   val next = supervisor.publish(1);
   if next.is_err(); then stdio.println("FAIL publish actor service"); return 1; fi
   val updated = next.unwrap();
-  val new_bind = service_bindings.bind(rt borrow updated, "api-service");
+  val new_bind = service_bindings.bind(rt borrow updated, rt borrow trusted.unwrap(),
+    "api-service");
   if new_bind.is_err() || new_bind.unwrap().target != "api-v2" ||
     new_bind.unwrap().epoch != 2 || old_bind.target != "api-v1" ||
     old_bind.epoch != 1; then
     stdio.println("FAIL generation-local service isolation"); return 1;
   fi
-  stdio.println("PASS native forward service binding contract (no runtime dispatch)");
+
+  let Array<service_bindings.CodeImage> duplicates =
+    new Array<service_bindings.CodeImage>();
+  duplicates.add(new service_bindings.CodeImage("api-v1", "abi-v1", false));
+  duplicates.add(new service_bindings.CodeImage("api-v1", "abi-v2", false));
+  if service_bindings.registry(duplicates).is_ok(); then
+    stdio.println("FAIL duplicate trusted actor target"); return 1;
+  fi
+
+  stdio.println("PASS trusted forward service binding contract (no runtime dispatch)");
   return 0;
 }
