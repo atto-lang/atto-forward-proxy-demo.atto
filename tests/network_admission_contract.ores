@@ -13,10 +13,12 @@ pub routine main(): int {
 
   val created = slot_pool.create(1);
   if created.is_err(); then stdio.println("FAIL request pool"); return 1; fi
-  val admitted = created.unwrap().admit(7);
-  if admitted.is_err(); then stdio.println("FAIL request lease"); return 1; fi
-  val live = admitted.unwrap().state;
-  val request = admitted.unwrap().handle;
+  val initial_pool = created.unwrap();
+  val admitted_result = initial_pool.admit(7);
+  if admitted_result.is_err(); then stdio.println("FAIL request lease"); return 1; fi
+  val admitted = admitted_result.unwrap();
+  val live = admitted.state;
+  val request = admitted.handle;
 
   val zero = new traffic_controls.Window(7, 1000, 0);
   val rate_result = traffic_controls.allow_window(rt borrow zero,
@@ -86,7 +88,9 @@ pub routine main(): int {
     stdio.println("FAIL stale/recycled request handle authorized egress");
     return 1;
   fi
-  val next_snapshot = new generation.Snapshot(8, parsed.unwrap());
+  val next_config = proxy_yaml.parse(source, "forward");
+  if next_config.is_err(); then stdio.println("FAIL next config fixture"); return 1; fi
+  val next_snapshot = new generation.Snapshot(8, next_config.unwrap());
   if network_admission.authorize_connect(rt borrow next_snapshot, rt borrow live,
       rt borrow request, rt borrow rate, rt borrow closed_breaker,
       rt borrow endpoint, 1001).is_ok(); then
