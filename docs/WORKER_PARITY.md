@@ -45,8 +45,9 @@ and an elementary failure-threshold circuit-breaker with cooldown. These are
 reference calculations, **not** shared HAProxy stick tables, production-wide
 rate limits or live latency sensors. Half-open admits MUST require an
 exclusive supervisor-issued probe lease before network integration.
-Generation changes intentionally reset counters, and monotonic time is
-provided by a trusted caller, never derived from a request header.
+Generation changes intentionally reset counters, and monotonic time is provided by a trusted caller, never derived from a request header.
+
+`src/network_admission.ores` composes the current request-slot lease, immutable configuration epoch, rate decision, breaker state, CONNECT allowlist, and a trusted resolver's pinned/public-address classification immediately before any future outbound transport. Its `ForwardPermit` is only a proof descriptor; the transport must not treat it as dial authority.
 
 `src/network_admission.ores` composes the current request-slot lease, immutable
 configuration epoch, rate decision, breaker state, CONNECT allowlist, and a
