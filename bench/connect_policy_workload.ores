@@ -1,0 +1,56 @@
+// Performance workload for pure CONNECT admission only.
+// It never opens a socket and MUST NOT be reported as forward-proxy throughput.
+// External benchmark tooling measures this fixed deterministic workload.
+import module generation from "../src/generation";
+import module connect_admission from "../src/connect_admission";
+
+pub routine main(): int {
+  val String doc = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\nservices:\n  - name: egress-policy\n    kind: actor\n    target: egress-v1\n";
+  val opened = generation.open(doc, "forward");
+  if opened.is_err(); then
+    stdio.println("FAIL benchmark fixture");
+    return 1;
+  fi
+  val supervisor = opened.unwrap();
+  val snapshot = supervisor.snapshot().unwrap();
+  let int checksum = 0;
+
+  // Valid policy planning path. Every result must remain non-authorizing.
+  for (let i = 0; i < 100000; i++) {
+    val planned = connect_admission.plan(rt borrow snapshot,
+      "CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443", "egress-policy");
+    if planned.is_err(); then
+      stdio.println("FAIL allowed planning path");
+      return 1;
+    fi
+    val intent = planned.unwrap();
+    if intent.hostname != "api.example.test" ||
+      intent.actor_image != "egress-v1" ||
+      intent.socket_authorized ||
+      connect_admission.may_connect(rt borrow intent); then
+      stdio.println("FAIL admission leaked authority");
+      return 1;
+    fi
+    checksum = checksum + intent.epoch;
+  }
+
+  // Denied policy path. This is deliberately part of the fixed workload so a
+  // future optimization cannot make the allow path fast by weakening denial.
+  for (let i = 0; i < 100000; i++) {
+    if connect_admission.plan(rt borrow snapshot,
+      "CONNECT evil.example.invalid:443 HTTP/1.1",
+      "evil.example.invalid:443", "egress-policy").is_ok(); then
+      stdio.println("FAIL denied planning path");
+      return 1;
+    fi
+    checksum = checksum + 1;
+  }
+
+  if checksum != 200000; then
+    stdio.println("FAIL benchmark checksum");
+    return 1;
+  fi
+  stdio.println("PASS 200000 CONNECT policy plans; sockets forbidden");
+  return 0;
+}
