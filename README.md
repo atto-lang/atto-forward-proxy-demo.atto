@@ -21,7 +21,7 @@ The exact-head native compiler/contract workflow is [`.github/workflows/native-c
 
 ## Native Oreslang CONNECT and HTTP header contracts
 
-`src/proxy_wire.ores` parses only canonical `CONNECT dns-name:443 HTTP/1.1` request metadata and separates syntax admission from a configured-domain predicate. `src/header_policy.ores` implements conservative hop-by-hop/header-injection predicates. `tests/wire_contract.ores` and `tests/header_policy_contract.ores` are Oreslang-only positive/negative test programs. No test run or compiler acceptance is claimed for this PR head.
+`src/proxy_wire.ores` parses only canonical `CONNECT dns-name:443 HTTP/1.1` request metadata and separates syntax admission from a configured-domain predicate. `src/service_bindings.ores` resolves only declared, generation-pinned symbolic actor metadata; `src/connect_admission.ores` combines that metadata with the configured CONNECT policy into a non-authorizing intent whose `socket_authorized` field is always false and whose `may_connect()` result is always false. `src/header_policy.ores` implements conservative hop-by-hop/header-injection predicates. `tests/connect_admission_contract.ores`, `tests/service_bindings_contract.ores`, `tests/wire_contract.ores`, and `tests/header_policy_contract.ores` exercise the positive/negative boundaries. No native compiler acceptance is claimed until an exact-head runner actually executes these contracts.
 
 **CONNECT tunnels are not started.** A domain-name allowlist is not an authorization or SSRF boundary. Before a forward socket is permitted, a runtime transport must provide explicit proxy authentication, request ownership, raw CONNECT framing, safe DNS resolution and IP pinning, byte-stream relay/half-close/backpressure, cancellation, quotas and LLVM parity. Read `docs/WIRE_AND_INGRESS.md` for details.
 
@@ -36,4 +36,4 @@ The Actions workflow now has explicit native Oreslang compile/execute gates for 
 
 ## Performance laboratory
 
-See [bench/README.md](bench/README.md) for correctness-gated NGINX/HAProxy baselines, latency/throughput sweeps, provenance and native Oreslang policy workloads. Forwarding and CONNECT remain explicitly blocked until actual Oreslang transport gates pass.
+See [bench/README.md](bench/README.md) for correctness-gated NGINX/HAProxy baselines, latency/throughput sweeps, provenance and native Oreslang policy workloads. `bench/connect_policy_workload.ores` is a separate 200,000-plan microbenchmark for the pure non-authorizing CONNECT planner; it is never comparable to network proxy throughput. Forwarding and CONNECT remain explicitly blocked until actual Oreslang transport gates pass.
