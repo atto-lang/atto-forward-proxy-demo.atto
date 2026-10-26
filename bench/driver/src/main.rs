@@ -39,6 +39,47 @@ fn expected(profile: &str, size: usize) -> Result<(u16, Vec<u8>, String), String
         _ => Err("profile must be ingress (size 0) or forward (size 0..65536)".into()),
     }
 }
+fn origin_request_size(wire: &[u8]) -> Result<usize, String> {
+    let end = wire
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or("incomplete request headers")?;
+    if end > 16384 {
+        return Err("request header budget".into());
+    }
+    let head =
+        std::str::from_utf8(&wire[..end]).map_err(|_| "non UTF-8 fixture request headers")?;
+    let mut lines = head.split("\r\n");
+    let request_line = lines.next().ok_or("missing request line")?;
+    let mut parts = request_line.split(' ');
+    let method = parts.next().ok_or("missing request method")?;
+    let target = parts.next().ok_or("missing request target")?;
+    let version = parts.next().ok_or("missing request version")?;
+    if parts.next().is_some() || method != "GET" || version != "HTTP/1.1" {
+        return Err("unexpected request line".into());
+    }
+    let size = target
+        .strip_prefix("/bytes/")
+        .and_then(|s| number(s, 0, 65536).ok())
+        .ok_or("unexpected request target")?;
+    let mut host_seen = false;
+    for line in lines {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            return Err("folded request header".into());
+        }
+        let (key, value) = line.split_once(':').ok_or("malformed request header")?;
+        if key.eq_ignore_ascii_case("host") {
+            if host_seen || value.trim() != "bench.example.test" {
+                return Err("duplicate or unexpected Host".into());
+            }
+            host_seen = true;
+        }
+    }
+    if !host_seen {
+        return Err("missing Host".into());
+    }
+    Ok(size)
+}
 // This fixture deliberately supports a bounded Content-Length/connection-close
 // response only. Reject unsupported framing rather than timing partial bodies.
 fn verify_with_nonce(
@@ -236,19 +277,17 @@ fn origin(addr: SocketAddr, origin_nonce: String) -> Result<(), String> {
                     Ok(n) => wire.extend_from_slice(&buf[..n]),
                 }
             }
-            let text = String::from_utf8_lossy(&wire);
-            let path = text.split(' ').nth(1).unwrap_or("");
-            let size = path
-                .strip_prefix("/bytes/")
-                .and_then(|s| number(s, 0, 65536).ok());
-            if let Some(size) = size {
-                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {size}\r\nContent-Type: application/octet-stream\r\nX-Bench-Origin: {origin_nonce}\r\nConnection: close\r\n\r\n");
-                let _ = s.write_all(head.as_bytes());
-                let _ = s.write_all(&vec![b'x'; size]);
-            } else {
-                let _ = s.write_all(
-                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
+            match origin_request_size(&wire) {
+                Ok(size) => {
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {size}\r\nContent-Type: application/octet-stream\r\nX-Bench-Origin: {origin_nonce}\r\nConnection: close\r\n\r\n");
+                    let _ = s.write_all(head.as_bytes());
+                    let _ = s.write_all(&vec![b'x'; size]);
+                }
+                Err(_) => {
+                    let _ = s.write_all(
+                        b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    );
+                }
             }
         });
     }
