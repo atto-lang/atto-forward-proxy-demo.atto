@@ -111,9 +111,10 @@ jobs:
       - name: Execute native YAML weighted backend pool contract
         run: oreslang tests/backend_pools_contract.ores
 
-      - name: Compiler-check authenticated-CONNECT integration staging model
+      - name: Compiler-check authenticated-CONNECT integration staging model and perf workload
         run: |
           oreslang --check src/connect_admission.ores
           oreslang --check tests/connect_admission_contract.ores
+          oreslang --check bench/connect_policy_workload.ores
       - name: Execute native forward CONNECT policy-actor denial contracts
         run: oreslang tests/connect_admission_contract.ores
