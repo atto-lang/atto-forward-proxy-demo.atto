@@ -1,0 +1,93 @@
+name: Forward CONNECT policy performance
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forward-connect-policy-perf-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  connect-policy-benchmark:
+    runs-on: [self-hosted, linux, x64, oreslang-jdk25]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact benchmark tree
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify exact source and runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          command -v oreslang
+          command -v taskset
+          command -v sha256sum
+          command -v sed
+          test -x /usr/bin/time
+          allowed="$(taskset -pc $$ | sed 's/.*: //')"
+          cpu="${allowed%%,*}"
+          cpu="${cpu%%-*}"
+          [[ "$cpu" =~ ^[0-9]+$ ]]
+          taskset -c "$cpu" true
+          echo "BENCH_CPU=$cpu" >> "$GITHUB_ENV"
+          sha256sum "$(command -v oreslang)"
+          java -version
+          oreslang --check bench/connect_policy_workload.ores
+
+      - name: Warm up and measure fixed CONNECT policy workload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/forward-connect-policy-perf"
+          mkdir -p "$out"
+
+          {
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "git_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "oreslang_sha256=$(sha256sum "$(command -v oreslang)" | awk '{print $1}')"
+            echo "bench_cpu=$BENCH_CPU"
+            echo "cpu_allowed_list=$(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)"
+            echo "kernel=$(uname -a)"
+            echo "cpus=$(nproc)"
+            lscpu
+            java -version 2>&1
+          } >"$out/metadata.txt"
+
+          taskset -c "$BENCH_CPU" oreslang bench/connect_policy_workload.ores >"$out/warmup.txt"
+          grep -Fxq 'PASS 200000 CONNECT policy plans; sockets forbidden' "$out/warmup.txt"
+
+          for sample in 1 2 3 4 5; do
+            /usr/bin/time               -f 'real_s=%e user_s=%U sys_s=%S maxrss_kb=%M'               -o "$out/sample-${sample}-time.txt"               taskset -c "$BENCH_CPU" oreslang bench/connect_policy_workload.ores               >"$out/sample-${sample}-stdout.txt"
+            grep -Fxq 'PASS 200000 CONNECT policy plans; sockets forbidden'               "$out/sample-${sample}-stdout.txt"
+          done
+
+          echo 'sample,real_s,user_s,sys_s,maxrss_kb' >"$out/summary.csv"
+          for sample in 1 2 3 4 5; do
+            awk -v sample="$sample" '
+              {
+                for (i = 1; i <= NF; i++) {
+                  split($i, part, "=")
+                  value[part[1]] = part[2]
+                }
+              }
+              END {
+                if (value["real_s"] == "" || value["maxrss_kb"] == "") exit 2
+                printf "%s,%s,%s,%s,%s\n", sample, value["real_s"], value["user_s"], value["sys_s"], value["maxrss_kb"]
+              }
+            ' "$out/sample-${sample}-time.txt" >>"$out/summary.csv"
+          done
+
+      - name: Upload raw benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forward-connect-policy-${{ github.sha }}
+          path: ${{ runner.temp }}/forward-connect-policy-perf
+          if-no-files-found: error
+          retention-days: 30
