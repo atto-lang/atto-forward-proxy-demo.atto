@@ -40,8 +40,12 @@ pub routine main(): int {
   if next.is_err(); then stdio.println("FAIL publish actor service"); return 1; fi
   val updated = next.unwrap();
   val new_bind = service_bindings.bind(rt borrow updated, "egress-policy");
-  if new_bind.is_err() || new_bind.unwrap().target != "egress-v2" ||
-    new_bind.unwrap().epoch != 2 || old_bind.target != "egress-v1" ||
+  if new_bind.is_err(); then
+    stdio.println("FAIL refreshed service binding"); return 1;
+  fi
+  val refreshed_bind = new_bind.unwrap();
+  if refreshed_bind.target != "egress-v2" ||
+    refreshed_bind.epoch != 2 || old_bind.target != "egress-v1" ||
     old_bind.epoch != 1; then
     stdio.println("FAIL generation-local service isolation"); return 1;
   fi
