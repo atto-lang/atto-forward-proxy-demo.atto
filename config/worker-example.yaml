@@ -1,0 +1,20 @@
+version: ores.proxy/v1
+mode: forward
+listen:
+  host: 127.0.0.1
+  port: 8080
+runtime:
+  carriers: 20
+  actors: 100
+  max_inflight: 1024
+policy:
+  deny_private: true
+  allow_domains: example.test
+  connect_ports: 443
+services:
+  - name: egress-policy
+    kind: actor
+    target: egress-v1
+middleware:
+  - name: trace
+    kind: trace
