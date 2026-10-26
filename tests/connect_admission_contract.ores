@@ -50,9 +50,13 @@ pub routine main(): int {
   val new_intent = connect_admission.plan(rt borrow refreshed,
     "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
     "egress-policy");
-  if new_intent.is_err() || new_intent.unwrap().actor_image != "egress-v2" ||
-    new_intent.unwrap().epoch != 2 || new_intent.unwrap().socket_authorized ||
-    connect_admission.may_connect(rt borrow new_intent.unwrap()) ||
+  if new_intent.is_err(); then
+    stdio.println("FAIL refreshed CONNECT intent"); return 1;
+  fi
+  val refreshed_intent = new_intent.unwrap();
+  if refreshed_intent.actor_image != "egress-v2" ||
+    refreshed_intent.epoch != 2 || refreshed_intent.socket_authorized ||
+    connect_admission.may_connect(rt borrow refreshed_intent) ||
     intent.actor_image != "egress-v1" || intent.epoch != 1; then
     stdio.println("FAIL policy generation pin or non-authority"); return 1;
   fi
