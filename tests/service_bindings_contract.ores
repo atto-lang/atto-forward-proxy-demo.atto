@@ -28,6 +28,10 @@ pub routine main(): int {
       "services:\n  - name: egress-policy\n    kind: actor\n    target: egress-v0"), "forward").is_ok(); then
     stdio.println("FAIL invalid service declaration"); return 1;
   fi
+  val String reverse_with_service = "version: ores.proxy/v1\nmode: reverse\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\nroutes:\n  - name: api\n    host: api.example.test\n    path_prefix: /\n    upstream: https://api.example.test:443\nservices:\n  - name: egress-policy\n    kind: actor\n    target: egress-v1\n";
+  if proxy_yaml.parse(reverse_with_service, "reverse").is_ok(); then
+    stdio.println("FAIL forward-only service schema admitted in reverse mode"); return 1;
+  fi
   if supervisor.prepare(source.replace_literal("target: egress-v1",
       "target: egress-v2")).is_err(); then
     stdio.println("FAIL stage actor version"); return 1;
