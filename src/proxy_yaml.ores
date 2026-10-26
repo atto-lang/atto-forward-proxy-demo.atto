@@ -497,7 +497,9 @@ define module proxy_yaml as
       if !seen_routes || routes.size == 0 || routes.size > 128; then
         return Err("reverse mode needs 1..128 routes");
       fi
-      if seen_policy; then return Err("reverse policy section is not supported in v1"); fi
+      if seen_policy || seen_services; then
+        return Err("reverse policy/services sections are not supported in forward-repo v1");
+      fi
     else
       if seen_routes || !seen_policy || deny_private != "true" ||
         !safe_scalar(allowed) || connect != "443"; then
