@@ -11,6 +11,7 @@ orchestration. This does not enable an Oreslang socket or forwarding path.
 |---|---|---|---|
 | Loopback HTTP admission, exact 501 body | Reverse opt-in listener; native execution required | Local 501 response | Local 501 response |
 | HTTP reverse forwarding, exact origin bytes/marker | Not implemented; a 501 fails preflight | Configured | Configured |
+| CONNECT policy planning | Pure generation-pinned actor/service intent; never authorizes a socket | Not comparable | Not comparable |
 | Authenticated CONNECT tunnel | Not implemented | Not configured; select/version a CONNECT-capable distribution separately | Not configured; TCP passthrough is not authenticated CONNECT |
 | Native policy workload | 50,000 checked operations; native runtime required | Not comparable | Not comparable |
 
@@ -135,6 +136,20 @@ its 50,000-operation checksum each time. `/usr/bin/time -v` records whole-proces
 elapsed/CPU/peak RSS, including startup, JIT and shutdown. These numbers compare
 Oreslang runtime configurations only, not NGINX/HAProxy forwarding. The native
 workflow also checks/executes this workload, without a machine-speed threshold.
+
+## Forward CONNECT planner microbenchmark
+
+The forward repository also contains `bench/connect_policy_workload.ores` and
+the manual `.github/workflows/perf-connect-policy.yml` lane. The workload
+executes 100,000 admitted policy plans and 100,000 denied plans against one
+immutable generation, checks the exact service binding on every admitted result,
+and asserts `socket_authorized=false` plus `may_connect() == false`.
+
+This is an internal planner/runtime regression benchmark only. Whole-process
+timings include runtime startup/JIT/shutdown and must never be plotted against
+NGINX/HAProxy network throughput. Real CONNECT comparison remains blocked on
+authenticated admission, DNS/IP pinning, scoped NET authority, tunnel relay,
+half-close/backpressure, cancellation and bounded byte/deadline semantics.
 
 ## Next acceptance profiles
 
