@@ -59,3 +59,8 @@ CI does not discover-and-trust new Oreslang files implicitly. Two committed mani
 The workflow first regenerates both inventories from the checked-out tree and diffs them against the committed manifests. A source or pure contract added without updating the manifest fails before compilation. A manifest entry whose file is missing fails the same way. Only then does the runner compiler-check every reviewed Oreslang file and execute every reviewed pure contract.
 
 Integration fixtures that require a separately running listener or another process are compiler-checked through the complete source inventory but are not falsely treated as standalone pure tests. They need their own orchestration gate before any transport claim is promoted.
+
+
+## Private-runner gate shape
+
+This private repository intentionally keeps inventory verification and native execution in one approved self-hosted job. Private GitHub-hosted jobs currently fail before step 1, so splitting a hosted preflight would only create a false red dependency. The native job therefore performs inventory completeness first, then compiler checks and pure contract execution on the same exact checked-out tree.
