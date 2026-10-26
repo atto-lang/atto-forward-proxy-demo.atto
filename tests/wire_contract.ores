@@ -9,7 +9,8 @@ pub routine main(): int {
   val allowed = proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
     "api.example.test:443");
   if allowed.is_err(); then stdio.println("FAIL canonical CONNECT"); return 1; fi
-  if !proxy_wire.configured_connect(rt borrow config, rt borrow allowed.unwrap()); then
+  val allowed_target = allowed.unwrap();
+  if !proxy_wire.configured_connect(rt borrow config, rt borrow allowed_target); then
     stdio.println("FAIL configured destination"); return 1;
   fi
   if proxy_wire.connect("CONNECT foo.evil.test:443 HTTP/1.1", "foo.evil.test:443").is_err(); then
@@ -27,7 +28,11 @@ pub routine main(): int {
     proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.0", "api.example.test:443").is_ok() ||
     proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1\r\n", "api.example.test:443").is_ok() ||
     proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
-      "api.example.test:443\r\nForwarded: evil").is_ok(); then
+      "api.example.test:443\r\nForwarded: evil").is_ok() ||
+    proxy_wire.connect("CONNECT API.example.test:443 HTTP/1.1",
+      "API.example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test.:443 HTTP/1.1",
+      "api.example.test.:443").is_ok(); then
     stdio.println("FAIL CONNECT authority rejection"); return 1;
   fi
   stdio.println("PASS forward CONNECT grammar and configured-domain policy (no tunnel)");
