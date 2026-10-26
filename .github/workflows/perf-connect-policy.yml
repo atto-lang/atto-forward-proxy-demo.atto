@@ -56,6 +56,22 @@ jobs:
             grep -Fxq 'PASS 200000 CONNECT policy plans; sockets forbidden'               "$out/sample-${sample}-stdout.txt"
           done
 
+          echo 'sample,real_s,user_s,sys_s,maxrss_kb' >"$out/summary.csv"
+          for sample in 1 2 3 4 5; do
+            awk -v sample="$sample" '
+              {
+                for (i = 1; i <= NF; i++) {
+                  split($i, part, "=")
+                  value[part[1]] = part[2]
+                }
+              }
+              END {
+                if (value["real_s"] == "" || value["maxrss_kb"] == "") exit 2
+                printf "%s,%s,%s,%s,%s\n", sample, value["real_s"], value["user_s"], value["sys_s"], value["maxrss_kb"]
+              }
+            ' "$out/sample-${sample}-time.txt" >>"$out/summary.csv"
+          done
+
       - name: Upload raw benchmark evidence
         uses: actions/upload-artifact@v4
         with:
