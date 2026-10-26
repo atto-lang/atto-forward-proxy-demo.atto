@@ -1,0 +1,20 @@
+name: Oreslang private ephemeral runner canary
+on:
+  push:
+    branches:
+      - ci/oreslang-private-ephemeral-canary-20261026
+permissions: {}
+jobs:
+  canary:
+    runs-on: [self-hosted, linux, x64, oreslang-private-ephemeral]
+    timeout-minutes: 5
+    steps:
+      - name: Prove runner admission and native runtime presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=$RUNNER_NAME"
+          command -v oreslang
+          sha256sum "$(command -v oreslang)"
+          oreslang --version || true
+          java -version
