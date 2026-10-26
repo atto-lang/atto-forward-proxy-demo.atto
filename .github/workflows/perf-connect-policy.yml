@@ -1,0 +1,64 @@
+name: Forward CONNECT policy performance
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forward-connect-policy-perf-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  connect-policy-benchmark:
+    runs-on: [self-hosted, linux, x64, oreslang-jdk25]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact benchmark tree
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify runtime and benchmark source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          command -v oreslang
+          command -v taskset
+          command -v sha256sum
+          test -x /usr/bin/time
+          sha256sum "$(command -v oreslang)"
+          java -version
+          oreslang --check bench/connect_policy_workload.ores
+
+      - name: Warm up and measure fixed CONNECT policy workload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/forward-connect-policy-perf"
+          mkdir -p "$out"
+
+          {
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "oreslang_sha256=$(sha256sum "$(command -v oreslang)" | awk '{print $1}')"
+            echo "kernel=$(uname -a)"
+            echo "cpus=$(nproc)"
+            lscpu
+            java -version 2>&1
+          } >"$out/metadata.txt"
+
+          taskset -c 0 oreslang bench/connect_policy_workload.ores             >"$out/warmup.txt"
+
+          for sample in 1 2 3 4 5; do
+            /usr/bin/time               -f 'real_s=%e user_s=%U sys_s=%S maxrss_kb=%M'               -o "$out/sample-${sample}-time.txt"               taskset -c 0 oreslang bench/connect_policy_workload.ores               >"$out/sample-${sample}-stdout.txt"
+            grep -Fxq 'PASS 200000 CONNECT policy plans; sockets forbidden'               "$out/sample-${sample}-stdout.txt"
+          done
+
+      - name: Upload raw benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: forward-connect-policy-${{ github.sha }}
+          path: ${{ runner.temp }}/forward-connect-policy-perf
+          if-no-files-found: error
+          retention-days: 30
