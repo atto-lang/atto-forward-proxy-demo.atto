@@ -325,6 +325,41 @@ mod tests {
         b
     }
     #[test]
+    fn origin_request_requires_complete_expected_semantics() {
+        let valid =
+            b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\nConnection: close\r\n\r\n";
+        assert_eq!(origin_request_size(valid).unwrap(), 3);
+
+        for invalid in [
+            b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\n".as_slice(),
+            b"POST /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.0\r\nHost: bench.example.test\r\n\r\n",
+            b"GET /other HTTP/1.1\r\nHost: bench.example.test\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.1\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.1\r\nHost: wrong.example.test\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\nHost: bench.example.test\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\n folded: x\r\n\r\n",
+            b"GET /bytes/3 HTTP/1.1\r\nHost bench.example.test\r\n\r\n",
+        ] {
+            assert!(origin_request_size(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn origin_request_rejects_invalid_encoding_and_header_budget() {
+        let mut invalid_utf8 =
+            b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\nX-Bad: ".to_vec();
+        invalid_utf8.push(255);
+        invalid_utf8.extend_from_slice(b"\r\n\r\n");
+        assert!(origin_request_size(&invalid_utf8).is_err());
+
+        let mut oversized = b"GET /bytes/3 HTTP/1.1\r\nHost: bench.example.test\r\nX-Fill: ".to_vec();
+        oversized.extend(std::iter::repeat_n(b'a', 16384));
+        oversized.extend_from_slice(b"\r\n\r\n");
+        assert!(origin_request_size(&oversized).is_err());
+    }
+
+    #[test]
     fn exact_origin_body_and_marker() {
         assert!(verify(
             &response(200, &format!("X-Bench-Origin: {TEST_NONCE}\r\n"), b"xxx"),
