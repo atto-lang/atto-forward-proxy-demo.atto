@@ -71,6 +71,7 @@ jobs:
           oreslang --check src/connect_admission.ores
           oreslang --check tests/service_bindings_contract.ores
           oreslang --check tests/connect_admission_contract.ores
+          oreslang --check bench/connect_policy_workload.ores
       - name: Execute symbolic service and CONNECT actor-gate contracts
         run: |
           oreslang tests/service_bindings_contract.ores
