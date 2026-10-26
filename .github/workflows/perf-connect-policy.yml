@@ -28,6 +28,7 @@ jobs:
           command -v taskset
           command -v sha256sum
           test -x /usr/bin/time
+          taskset -c 0 true
           sha256sum "$(command -v oreslang)"
           java -version
           oreslang --check bench/connect_policy_workload.ores
