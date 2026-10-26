@@ -1,0 +1,31 @@
+// Symbolic generation-scoped service bindings for forward policy actors.
+// A binding is metadata only: it is NOT an ActorRef, socket capability, dynamic
+// class lookup, ambient fetch handle, or permission to open a network connection.
+import module proxy_yaml from "./proxy_yaml";
+import module generation from "./generation";
+
+define module service_bindings as
+  pub define class Binding as
+    pub val int epoch;
+    pub val String name;
+    pub val String kind;
+    pub val String target;
+  end
+
+  pub fnc bind(borrow generation.Snapshot snapshot,
+               String service_name): Result<Binding, String> {
+    if !proxy_yaml.valid_identifier(service_name); then
+      return Err("invalid service binding name");
+    fi
+    for (const service of snapshot.configuration.services) {
+      if service.name == service_name; then
+        if service.kind != "actor"; then
+          return Err("unsupported service binding kind");
+        fi
+        return Ok(new Binding(snapshot.epoch, service.name,
+          service.kind, service.target));
+      fi
+    }
+    return Err("undeclared service binding");
+  }
+end
