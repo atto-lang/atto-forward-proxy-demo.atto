@@ -32,3 +32,9 @@ The runtime is **NOT a forwarding proxy**. No destination capability may be crea
 The strict YAML subset now uses canonical [a-z0-9-] names for routes/middleware; forbids hop-by-hop, proxy credentials, and request-framing control header names as `require_header`; and rejects arbitrary IPv4 upstream spellings (v0 explicitly permits loopback `127.0.0.1`, `localhost`, or syntactically valid DNS names). Exact DNS/IP/TLS safety remains a separate network-layer release gate. Source policy still lacks a race-free configuration file descriptor and an input byte-size cap before `fs.read_text`.
 
 The Actions workflow now has explicit native Oreslang compile/execute gates for the larger source/test tree, not just YAML. Self-hosted runner admission and actual executed test results are still required; a queued job is not a passing check. The alternative opt-in reverse ingress remains loopback-only and must not be counted as a tested production service.
+
+## Performance evidence
+
+The manual `.github/workflows/perf-connect-policy.yml` workflow measures the current native CONNECT **admission-policy** path with a fixed allow/deny workload and retains five raw timing/RSS samples plus runtime provenance. The workload proves on every admitted iteration that no socket authority is granted.
+
+This is not forward-proxy throughput and is intentionally not plotted against nginx or HAProxy yet. A fair comparison requires all candidates to establish the same HTTP CONNECT tunnel and relay the same bytes; the Oreslang guest transport cannot do that today. [`bench/README.md`](bench/README.md) defines the exact functional and security gates for the future nginx 1.31.8 / HAProxy 3.4.7 tunnel suite.
