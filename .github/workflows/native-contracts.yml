@@ -65,6 +65,16 @@ jobs:
         run: |
           oreslang --check src/proxy_wire.ores
           oreslang --check src/header_policy.ores
+      - name: Compiler-check symbolic service and CONNECT actor gate
+        run: |
+          oreslang --check src/service_bindings.ores
+          oreslang --check src/connect_admission.ores
+          oreslang --check tests/service_bindings_contract.ores
+          oreslang --check tests/connect_admission_contract.ores
+      - name: Execute symbolic service and CONNECT actor-gate contracts
+        run: |
+          oreslang tests/service_bindings_contract.ores
+          oreslang tests/connect_admission_contract.ores
       - name: Compiler-check native slot lifecycle, middleware manifest and data layouts
         run: |
           oreslang --check src/slot_lifecycle.ores
