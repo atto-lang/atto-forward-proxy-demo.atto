@@ -56,6 +56,35 @@ jobs:
               exit 1
             }
           echo 'live_main_protection=true'
+          # Verify the effective active rules for main, not merely the branch's
+          # coarse protected boolean. This endpoint requires Metadata: read and
+          # returns active repository/organization rules that actually apply.
+          rules_json="$(curl --fail --silent --show-error --retry 0 \
+            --connect-timeout 5 --max-time 15 \
+            -H "Authorization: Bearer $GH_READ_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/ores-truffle-oreslang/oreslang-forward-proxy-demo.ores/rules/branches/main?per_page=100')"
+          jq -e '
+            any(.[];
+              .type == "pull_request" and
+              (.parameters.required_approving_review_count >= 1) and
+              (.parameters.dismiss_stale_reviews_on_push == true) and
+              (.parameters.require_last_push_approval == true) and
+              (.parameters.required_review_thread_resolution == true)
+            )
+          ' <<<"$rules_json" >/dev/null || {
+            echo 'main lacks required independent-review/stale-review/conversation rules' >&2
+            exit 1
+          }
+          jq -e 'any(.[]; .type == "non_fast_forward")' <<<"$rules_json" >/dev/null || {
+            echo 'main does not block force pushes' >&2
+            exit 1
+          }
+          jq -e 'any(.[]; .type == "deletion")' <<<"$rules_json" >/dev/null || {
+            echo 'main does not restrict deletion' >&2
+            exit 1
+          }
+          echo 'effective_main_review_rules=true'
           echo "control_plane_sha=$GITHUB_SHA"
   native-contracts:
     # Only admitted after the source-free hosted preflight succeeds.
@@ -97,6 +126,25 @@ jobs:
               jq -e --arg head "$GITHUB_SHA" '(.protected == true) and (.commit.sha == $head)' <<<"$response" >/dev/null
             fi
           done
+          rules_json="$(curl --fail --silent --show-error --retry 0 \
+            --connect-timeout 5 --max-time 15 \
+            -H "Authorization: Bearer $GH_READ_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/ores-truffle-oreslang/oreslang-forward-proxy-demo.ores/rules/branches/main?per_page=100')"
+          jq -e '
+            any(.[];
+              .type == "pull_request" and
+              (.parameters.required_approving_review_count >= 1) and
+              (.parameters.dismiss_stale_reviews_on_push == true) and
+              (.parameters.require_last_push_approval == true) and
+              (.parameters.required_review_thread_resolution == true)
+            ) and
+            any(.[]; .type == "non_fast_forward") and
+            any(.[]; .type == "deletion")
+          ' <<<"$rules_json" >/dev/null || {
+            echo 'effective protected-main governance changed before native allocation' >&2
+            exit 1
+          }
           echo 'native_precheckout_live_admission=true'
       - name: Checkout exact frozen release candidate tree
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
