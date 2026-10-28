@@ -142,10 +142,21 @@ jobs:
           # containing bin/oreslang and every Oreslang runtime/JAR dependency.
           # Symlinks and special files are rejected after extraction.
           runtime_bundle='/opt/oreslang-approved/oreslang-runtime.tar.gz'
-          test -f "$runtime_bundle" || { echo "approved Oreslang runtime bundle missing" >&2; exit 1; }
-          test "$(stat -c %u -- "$runtime_bundle")" = 0 || { echo "runtime bundle must be root-owned" >&2; exit 1; }
-          bundle_mode="$(stat -c %a -- "$runtime_bundle")"
-          (( (8#$bundle_mode & 022) == 0 )) || { echo "runtime bundle must not be group/world writable" >&2; exit 1; }
+          # Running as root defeats root-owned staging guarantees.
+          test "$(id -u)" != 0 || { echo 'native runner must not execute as root' >&2; exit 1; }
+          test -f "$runtime_bundle" || { echo 'approved runtime bundle missing' >&2; exit 1; }
+          # Reject writable/symlinked parent directories before hashing or
+          # extracting the reviewed archive.
+          for pinned_path in /opt /opt/oreslang-approved "$runtime_bundle"; do
+            test ! -L "$pinned_path" || { echo 'runtime staging path is a symlink' >&2; exit 1; }
+            test "$(stat -c %u -- "$pinned_path")" = 0 || {
+              echo 'runtime staging path must be root-owned' >&2; exit 1;
+            }
+            pinned_mode="$(stat -c %a -- "$pinned_path")"
+            (( (8#$pinned_mode & 022) == 0 )) || {
+              echo 'runtime staging path must not be group/world writable' >&2; exit 1;
+            }
+          done
           [[ "${APPROVED_ORESLANG_RUNTIME_BUNDLE_SHA256:-}" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Missing/invalid administrator-approved Oreslang runtime bundle SHA-256" >&2; exit 1; }
           approved_bundle_sha="${APPROVED_ORESLANG_RUNTIME_BUNDLE_SHA256,,}"
           actual_bundle_sha="$(sha256sum -- "$runtime_bundle" | cut -d " " -f 1)"
