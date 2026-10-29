@@ -6,6 +6,25 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Neutralize inherited dynamic-loader, JVM and Git configuration hooks before
+# the FIRST hosted/native shell or checkout action. Bash -p alone does not
+# suppress LD_PRELOAD, LD_LIBRARY_PATH or JAVA_TOOL_OPTIONS.
+env:
+  LD_PRELOAD: ''
+  LD_LIBRARY_PATH: ''
+  LD_AUDIT: ''
+  LD_DEBUG: ''
+  LD_ORIGIN_PATH: ''
+  BASH_ENV: ''
+  ENV: ''
+  JAVA_TOOL_OPTIONS: ''
+  JDK_JAVA_OPTIONS: ''
+  _JAVA_OPTIONS: ''
+  CLASSPATH: ''
+  GIT_CONFIG_COUNT: '0'
+  GIT_CONFIG_PARAMETERS: ''
+  GIT_CONFIG_GLOBAL: /dev/null
+  GIT_CONFIG_SYSTEM: /dev/null
 # Privileged-mode Bash ignores imported BASH_FUNC_* and BASH_ENV even on
 # a reused self-hosted runner. Apply to every run step, including implicit ones.
 defaults:
