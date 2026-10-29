@@ -197,11 +197,15 @@ jobs:
           test "$(id -u)" != 0 || { echo 'native runner must not execute as root' >&2; exit 1; }
           test -d "$runtime_root" || { echo 'approved runtime tree missing' >&2; exit 1; }
           test -f "$launcher" && test -x "$launcher" || { echo 'approved runtime missing executable bin/oreslang' >&2; exit 1; }
-          # find -xdev silently skips nested mounts, including file bind mounts.
-          # Reject them before hashing; otherwise the approved manifest can omit files.
+          # find -xdev omits nested mounts, including file-level bind mounts.
+          # /proc/self/mountinfo sees every mount in this process namespace.
           test -r /proc/self/mountinfo && test -x /usr/bin/awk || { echo 'mount verifier unavailable' >&2; exit 1; }
-          test -z "$(/usr/bin/awk -v prefix="$runtime_root/" 'index($5,prefix)==1 {print $5; exit}' /proc/self/mountinfo)" || {
-            echo 'approved runtime tree contains an unverified nested mount' >&2
+          mount_report="$(/usr/bin/awk -v root="$runtime_root" -v prefix="$runtime_root/" '$5==root || index($5,prefix)==1 {print $5; exit}' /proc/self/mountinfo)" || {
+            echo 'failed to read approved runtime mount table' >&2
+            exit 1
+          }
+          test -z "$mount_report" || {
+            echo 'approved runtime tree is a mount or contains a nested mount' >&2
             exit 1
           }
           # Every ancestor and every runtime object must be root-owned and
@@ -262,7 +266,8 @@ jobs:
             'test "$(id -u)" != 0 || exit 1' \
             'test -d "$runtime_root" && test -f "$launcher" && test -x "$launcher" || exit 1' \
             'test -r /proc/self/mountinfo && test -x /usr/bin/awk || exit 1' \
-            'test -z "$(/usr/bin/awk -v prefix="$runtime_root/" "index(\$5,prefix)==1 {print \$5; exit}" /proc/self/mountinfo)" || { echo "approved Oreslang runtime contains nested mount" >&2; exit 1; }' \
+            'mount_report="$(/usr/bin/awk -v root="$runtime_root" -v prefix="$runtime_root/" "\$5==root || index(\$5,prefix)==1 {print \$5; exit}" /proc/self/mountinfo)" || { echo "failed to read approved runtime mount table" >&2; exit 1; }' \
+            'test -z "$mount_report" || { echo "approved Oreslang runtime is a mount or contains nested mount" >&2; exit 1; }' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev -type l -print -quit)" || exit 1' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev ! -type d ! -type f -print -quit)" || exit 1' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev \( ! -uid 0 -o -perm /022 \) -print -quit)" || exit 1' \
