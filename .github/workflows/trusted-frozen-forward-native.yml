@@ -97,7 +97,11 @@ jobs:
       github.repository_id == '1429955596' &&
       github.ref == 'refs/heads/main' &&
       github.ref_protected == true
-    runs-on: [self-hosted, linux, x64, oreslang-jdk25]
+    # A named group prevents scheduling on the unrestricted default runner pool.
+    # Admin must restrict this group to this exact reviewed workflow on main.
+    runs-on:
+      group: oreslang-trusted-native
+      labels: [self-hosted, linux, x64, oreslang-jdk25]
     timeout-minutes: 20
     steps:
       - name: Recheck protected private main before frozen checkout
