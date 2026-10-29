@@ -1,6 +1,6 @@
 # Native compiler and contract gate. No runtime source checkout or cross-org mirror.
 # A trusted, isolated runner carrying the 'oreslang-jdk25' label must have an
-# approved Oreslang Java/Graal executable on PATH. Missing runtime is a failure.
+# administrator-approved root-owned Oreslang runtime tree. Missing or mutable runtime is a failure.
 name: Trusted Frozen Forward Native Admission
 on:
   workflow_dispatch:
@@ -171,7 +171,7 @@ jobs:
           EXPECTED_FROZEN_BASE_SHA: 'fe46a4cac8c3cbedfaa5d872bc0e6348974141b5'
           EXPECTED_FROZEN_TREE_SHA: '42052135ffd0ed6db5f4d1031fbbc2234824b81a'
           EXPECTED_REPOSITORY_ID: '1429955596'
-          APPROVED_ORESLANG_RUNTIME_BUNDLE_SHA256: ${{ vars.ORESLANG_APPROVED_RUNTIME_BUNDLE_SHA256 }}
+          APPROVED_ORESLANG_RUNTIME_MANIFEST_SHA256: ${{ vars.ORESLANG_APPROVED_RUNTIME_MANIFEST_SHA256 }}
         run: |
           set -euo pipefail
           test "$EVENT_REPOSITORY_ID" = "$EXPECTED_REPOSITORY_ID"
@@ -189,17 +189,18 @@ jobs:
           java -version
           spec="$(java -XshowSettings:properties -version 2>&1 | sed -nE 's/^[[:space:]]*java\.specification\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' | head -n 1)"
           test "$spec" = 25 || { echo "JDK 25 required, found ${spec:-missing}" >&2; exit 1; }
-          # Execute only an administrator-staged, exact-hash runtime bundle.
-          # The bundle contract is a single top-level oreslang-runtime/ directory
-          # containing bin/oreslang and every Oreslang runtime/JAR dependency.
-          # Symlinks and special files are rejected after extraction.
-          runtime_bundle='/opt/oreslang-approved/oreslang-runtime.tar.gz'
-          # Running as root defeats root-owned staging guarantees.
+          # Execute only an administrator-staged, root-owned runtime tree.
+          # Never extract the trusted runtime as the runner account: a runner-
+          # owned extraction can be chmod'ed or replaced after verification.
+          runtime_root='/opt/oreslang-approved/oreslang-runtime'
+          launcher="$runtime_root/bin/oreslang"
           test "$(id -u)" != 0 || { echo 'native runner must not execute as root' >&2; exit 1; }
-          test -f "$runtime_bundle" || { echo 'approved runtime bundle missing' >&2; exit 1; }
-          # Reject writable/symlinked parent directories before hashing or
-          # extracting the reviewed archive.
-          for pinned_path in /opt /opt/oreslang-approved "$runtime_bundle"; do
+          test -d "$runtime_root" || { echo 'approved runtime tree missing' >&2; exit 1; }
+          test -f "$launcher" && test -x "$launcher" || { echo 'approved runtime missing executable bin/oreslang' >&2; exit 1; }
+          # Every ancestor and every runtime object must be root-owned and
+          # immutable to the non-root runner account. Links and special files
+          # are rejected so path resolution cannot escape the approved tree.
+          for pinned_path in /opt /opt/oreslang-approved "$runtime_root" "$launcher"; do
             test ! -L "$pinned_path" || { echo 'runtime staging path is a symlink' >&2; exit 1; }
             test "$(stat -c %u -- "$pinned_path")" = 0 || {
               echo 'runtime staging path must be root-owned' >&2; exit 1;
@@ -209,74 +210,59 @@ jobs:
               echo 'runtime staging path must not be group/world writable' >&2; exit 1;
             }
           done
-          [[ "${APPROVED_ORESLANG_RUNTIME_BUNDLE_SHA256:-}" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Missing/invalid administrator-approved Oreslang runtime bundle SHA-256" >&2; exit 1; }
-          approved_bundle_sha="${APPROVED_ORESLANG_RUNTIME_BUNDLE_SHA256,,}"
-          actual_bundle_sha="$(sha256sum -- "$runtime_bundle" | cut -d " " -f 1)"
-          printf "oreslang_runtime_bundle=%s\noreslang_runtime_bundle_sha256=%s\n" "$runtime_bundle" "$actual_bundle_sha"
-          test "$actual_bundle_sha" = "$approved_bundle_sha" || { echo "Unapproved Oreslang runtime bundle" >&2; exit 1; }
-          echo 'oreslang_runtime_bundle_digest_verified=true'
-          # Reject archive links and special files BEFORE extraction: checking
-          # only after extraction cannot undo writes through archive links.
-          if ! tar -tvzf "$runtime_bundle" | LC_ALL=C awk '
-            substr($0,1,1) != "d" && substr($0,1,1) != "-" { exit 1 }
-          '; then
-            echo 'runtime archive has symlinks, hardlinks or special members' >&2
+          test -z "$(find "$runtime_root" -xdev -type l -print -quit)" || {
+            echo 'approved runtime tree must not contain symlinks' >&2; exit 1;
+          }
+          test -z "$(find "$runtime_root" -xdev ! -type d ! -type f -print -quit)" || {
+            echo 'approved runtime tree contains special files' >&2; exit 1;
+          }
+          test -z "$(find "$runtime_root" -xdev \( ! -uid 0 -o -perm /022 \) -print -quit)" || {
+            echo 'approved runtime tree must be entirely root-owned and non-writable by group/other' >&2; exit 1;
+          }
+          file_count="$(find "$runtime_root" -xdev -type f -print | wc -l | tr -d '[:space:]')"
+          test "$file_count" -gt 0 || { echo 'approved runtime tree is empty' >&2; exit 1; }
+          [[ "${APPROVED_ORESLANG_RUNTIME_MANIFEST_SHA256:-}" =~ ^[0-9a-fA-F]{64}$ ]] || {
+            echo 'Missing/invalid administrator-approved Oreslang runtime manifest SHA-256' >&2
             exit 1
-          fi
-          tar -tzf "$runtime_bundle" > "$RUNNER_TEMP/oreslang-runtime-members.txt"
-          test -s "$RUNNER_TEMP/oreslang-runtime-members.txt" || { echo "empty Oreslang runtime bundle" >&2; exit 1; }
-          while IFS= read -r member; do
-            case "$member" in
-              oreslang-runtime|oreslang-runtime/*) ;;
-              *) echo "unexpected runtime archive path: $member" >&2; exit 1 ;;
-            esac
-            case "/$member/" in
-              */../*|*/./*) echo "unsafe runtime archive path: $member" >&2; exit 1 ;;
-            esac
-          done < "$RUNNER_TEMP/oreslang-runtime-members.txt"
-          runtime_root="$RUNNER_TEMP/oreslang-runtime-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          rm -rf -- "$runtime_root"
-          mkdir -m 700 -- "$runtime_root"
-          tar -xzf "$runtime_bundle" --strip-components=1 --no-same-owner --no-same-permissions -C "$runtime_root"
-          test -z "$(find "$runtime_root" -xdev -type l -print -quit)" || { echo "runtime bundle must not contain symlinks" >&2; exit 1; }
-          test -z "$(find "$runtime_root" -xdev ! -type d ! -type f -print -quit)" || { echo "runtime bundle contains special files" >&2; exit 1; }
-          launcher="$runtime_root/bin/oreslang"
-          test -f "$launcher" && test -x "$launcher" || { echo "approved runtime missing executable bin/oreslang" >&2; exit 1; }
-          runtime_manifest="$RUNNER_TEMP/oreslang-runtime-manifest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sha256"
-          (
+          }
+          approved_manifest_sha="${APPROVED_ORESLANG_RUNTIME_MANIFEST_SHA256,,}"
+          runtime_manifest_sha="$(
             cd "$runtime_root"
-            find . -xdev -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
-          ) > "$runtime_manifest"
-          test -s "$runtime_manifest"
-          runtime_manifest_sha="$(sha256sum -- "$runtime_manifest" | cut -d " " -f 1)"
-          printf "oreslang_runtime_manifest_sha256=%s\n" "$runtime_manifest_sha"
-          chmod -R a-w -- "$runtime_root"
-          # A private per-run wrapper re-verifies the approved archive and the
-          # complete extracted runtime manifest on every Oreslang invocation.
+            find . -xdev -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum |
+              sha256sum | cut -d ' ' -f 1
+          )"
+          printf 'oreslang_runtime_root=%s\noreslang_runtime_file_count=%s\noreslang_runtime_manifest_sha256=%s\n' \
+            "$runtime_root" "$file_count" "$runtime_manifest_sha"
+          test "$runtime_manifest_sha" = "$approved_manifest_sha" || {
+            echo 'Unapproved Oreslang runtime file manifest' >&2
+            exit 1
+          }
+          echo 'oreslang_root_owned_runtime_manifest_verified=true'
+          # The private per-run wrapper rechecks root ownership, permissions,
+          # object types and the complete manifest before every invocation.
           test -n "${RUNNER_TEMP:-}" && test -n "${GITHUB_RUN_ID:-}" && test -n "${GITHUB_RUN_ATTEMPT:-}" && test -n "${GITHUB_ENV:-}"
           umask 077
           wrapper_dir="$RUNNER_TEMP/oreslang-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -m 700 -- "$wrapper_dir"
           wrapper="$wrapper_dir/oreslang"
           printf '%s\n' '#!/bin/bash' 'set -euo pipefail' > "$wrapper"
-          printf "runtime_bundle=%q\n" "$runtime_bundle" >> "$wrapper"
-          printf "expected_bundle_sha=%q\n" "$approved_bundle_sha" >> "$wrapper"
-          printf "runtime_root=%q\n" "$runtime_root" >> "$wrapper"
-          printf "runtime_manifest=%q\n" "$runtime_manifest" >> "$wrapper"
-          printf "expected_manifest_sha=%q\n" "$runtime_manifest_sha" >> "$wrapper"
-          printf "launcher=%q\n" "$launcher" >> "$wrapper"
+          printf 'runtime_root=%q\n' "$runtime_root" >> "$wrapper"
+          printf 'expected_manifest_sha=%q\n' "$approved_manifest_sha" >> "$wrapper"
+          printf 'launcher=%q\n' "$launcher" >> "$wrapper"
           printf '%s\n' \
-            'test -f "$runtime_bundle" || exit 1' \
-            'actual_bundle_sha="$(/usr/bin/sha256sum -- "$runtime_bundle" | /usr/bin/cut -d " " -f 1)"' \
-            'test "$actual_bundle_sha" = "$expected_bundle_sha" || { echo "approved Oreslang runtime bundle changed" >&2; exit 1; }' \
+            'test "$(id -u)" != 0 || exit 1' \
+            'test -d "$runtime_root" && test -f "$launcher" && test -x "$launcher" || exit 1' \
+            'test -z "$(/usr/bin/find "$runtime_root" -xdev -type l -print -quit)" || exit 1' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev ! -type d ! -type f -print -quit)" || exit 1' \
-            'actual_manifest_sha="$(cd "$runtime_root" && /usr/bin/find . -xdev -type f -print0 | LC_ALL=C /usr/bin/sort -z | /usr/bin/xargs -0 /usr/bin/sha256sum | /usr/bin/sha256sum | /usr/bin/cut -d " " -f 1)"' \
+            'test -z "$(/usr/bin/find "$runtime_root" -xdev \( ! -uid 0 -o -perm /022 \) -print -quit)" || exit 1' \
+            'actual_manifest_sha="$(cd "$runtime_root" && /usr/bin/find . -xdev -type f -print0 | LC_ALL=C /usr/bin/sort -z | /usr/bin/xargs -0 -r /usr/bin/sha256sum | /usr/bin/sha256sum | /usr/bin/cut -d " " -f 1)"' \
             'test "$actual_manifest_sha" = "$expected_manifest_sha" || { echo "approved Oreslang runtime file set changed" >&2; exit 1; }' \
-            'test -x "$launcher" || exit 1' \
             'exec /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"' >> "$wrapper"
           chmod 700 "$wrapper"
           timeout 15s "$wrapper" --version || timeout 15s "$wrapper" --build-info || timeout 15s "$wrapper" --help
-          printf "ORESLANG_VERIFIED_WRAPPER=%s\n" "$wrapper" >> "$GITHUB_ENV"
+          printf 'ORESLANG_VERIFIED_WRAPPER=%s\n' "$wrapper" >> "$GITHUB_ENV"
           echo 'oreslang_complete_runtime_manifest_verified=true'
       - name: Compile complete frozen Oreslang source inventory
         shell: bash
