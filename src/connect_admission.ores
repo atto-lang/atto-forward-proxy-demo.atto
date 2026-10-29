@@ -40,8 +40,8 @@ define module connect_admission as
     if found.is_err(); then return Err("no declared egress policy actor"); fi
     val actor = found.unwrap();
     if actor.kind != "actor" || actor.epoch != snapshot.epoch ||
-      actor.network_capable; then
-      return Err("invalid or stale policy actor binding");
+      actor.abi != "connect-policy-v1" || actor.network_capable; then
+      return Err("invalid, stale or wrong-role policy actor binding");
     fi
     // A service binding does not grant NET. Only the future runtime transport
     // may mint an unforgeable scoped connect token after auth + resolved-IP ACL.
