@@ -291,7 +291,11 @@ jobs:
           wrapper="$ORESLANG_VERIFIED_WRAPPER"
           test -x "$wrapper"
           test "$(git rev-parse 'HEAD^{tree}')" = '42052135ffd0ed6db5f4d1031fbbc2234824b81a'
-          test -z "$(find src tests bench -type l -name '*.ores' -print -quit)"
+          source_symlink="$(find src tests bench -type l -name '*.ores' -print -quit)" || {
+            echo 'frozen source symlink scan failed' >&2
+            exit 1
+          }
+          test -z "$source_symlink" || { echo 'frozen source contains symlinked .ores file' >&2; exit 1; }
           find src tests bench -type f -name '*.ores' -print | LC_ALL=C sort > "$RUNNER_TEMP/oreslang-files.txt"
           source_count="$(wc -l < "$RUNNER_TEMP/oreslang-files.txt" | tr -d '[:space:]')"
           test "$source_count" = 31 || { echo "expected 31 reviewed Oreslang files, found $source_count" >&2; exit 1; }
