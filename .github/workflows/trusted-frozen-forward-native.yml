@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+          hash -r
           test "$GITHUB_REPOSITORY" = 'ores-truffle-oreslang/oreslang-forward-proxy-demo.ores'
           test "$GITHUB_REF" = 'refs/heads/main'
           test -n "${GH_READ_TOKEN:-}"
@@ -117,6 +118,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+          hash -r
           test "$GITHUB_REPOSITORY" = 'ores-truffle-oreslang/oreslang-forward-proxy-demo.ores'
           test "$GITHUB_REPOSITORY_ID" = '1429955596'
           test "$GITHUB_REF" = 'refs/heads/main'
@@ -163,11 +165,6 @@ jobs:
           persist-credentials: false
           # Never substitute a PR head or mutable target-branch SHA here.
           ref: fe46a4cac8c3cbedfaa5d872bc0e6348974141b5
-      - name: Set up JDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: '25'
       - name: Verify exact frozen source HEAD, JDK25 and administrator-approved runtime
         shell: /bin/bash --noprofile --norc -p -e -o pipefail {0}
         env:
@@ -182,6 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+          hash -r
           test "$EVENT_REPOSITORY_ID" = "$EXPECTED_REPOSITORY_ID"
           test "$GITHUB_REF" = 'refs/heads/main' || { echo 'untrusted control-plane ref' >&2; exit 1; }
           test "$WORKFLOW_REF_PROTECTED" = true || { echo 'default main is not protected' >&2; exit 1; }
@@ -326,6 +324,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+          hash -r
           wrapper="$ORESLANG_VERIFIED_WRAPPER"
           test -x "$wrapper"
           test "$(/usr/bin/git rev-parse 'HEAD^{tree}')" = '42052135ffd0ed6db5f4d1031fbbc2234824b81a'
@@ -348,6 +347,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH='/usr/bin:/bin:/usr/sbin:/sbin'
+          hash -r
           wrapper="$ORESLANG_VERIFIED_WRAPPER"
           /usr/bin/find tests -maxdepth 1 -type f -name '*_contract.ores' -print | LC_ALL=C /usr/bin/sort > "$RUNNER_TEMP/pure-contracts.txt"
           contract_count="$(/usr/bin/wc -l < "$RUNNER_TEMP/pure-contracts.txt" | /usr/bin/tr -d '[:space:]')"
