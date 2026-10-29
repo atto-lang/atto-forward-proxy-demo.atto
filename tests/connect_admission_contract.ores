@@ -10,8 +10,8 @@ pub routine main(): int {
   val snapshot = supervisor.snapshot().unwrap();
   let Array<service_bindings.CodeImage> images =
     new Array<service_bindings.CodeImage>();
-  images.add(new service_bindings.CodeImage("egress-v1", "abi-v1", false));
-  images.add(new service_bindings.CodeImage("egress-v2", "abi-v1", false));
+  images.add(new service_bindings.CodeImage("egress-v1", "connect-policy-v1", false));
+  images.add(new service_bindings.CodeImage("egress-v2", "connect-policy-v1", false));
   val trusted_result = service_bindings.registry(images);
   if trusted_result.is_err(); then
     stdio.println("FAIL trusted policy registry"); return 1;
@@ -23,15 +23,23 @@ pub routine main(): int {
   val wrong = service_bindings.registry(unrelated).unwrap();
   let Array<service_bindings.CodeImage> privileged =
     new Array<service_bindings.CodeImage>();
-  privileged.add(new service_bindings.CodeImage("egress-v1", "abi-v1", true));
+  privileged.add(new service_bindings.CodeImage("egress-v1", "connect-policy-v1", true));
   val network_actor = service_bindings.registry(privileged).unwrap();
+  let Array<service_bindings.CodeImage> wrong_role =
+    new Array<service_bindings.CodeImage>();
+  wrong_role.add(new service_bindings.CodeImage("egress-v1", "abi-v1", false));
+  val wrong_abi = service_bindings.registry(wrong_role).unwrap();
   if connect_admission.plan(rt borrow snapshot, rt borrow wrong,
       "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
       "egress-policy").is_ok() ||
     connect_admission.plan(rt borrow snapshot, rt borrow network_actor,
       "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
+      "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot, rt borrow wrong_abi,
+      "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
       "egress-policy").is_ok(); then
-    stdio.println("FAIL unregistered or network-capable policy actor"); return 1;
+    stdio.println("FAIL unregistered, wrong-role or network-capable policy actor");
+    return 1;
   fi
 
   val admitted = connect_admission.plan(rt borrow snapshot, rt borrow trusted,
