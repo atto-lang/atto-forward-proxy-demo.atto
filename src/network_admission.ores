@@ -92,7 +92,9 @@ define module network_admission as
       request.ticket.epoch != snapshot.epoch; then
       return Err("request lease is stale or belongs to another generation");
     fi
-    if !rate.permitted || rate.next.epoch != snapshot.epoch; then
+    if !rate.permitted || rate.next.epoch != snapshot.epoch ||
+      rate.next.started_ms < 0 || rate.next.started_ms > now_ms ||
+      rate.next.used <= 0 || rate.next.used > 1000000; then
       return Err("rate budget does not admit this generation");
     fi
     if !traffic_controls.permits(rt borrow breaker, snapshot.epoch, now_ms); then
@@ -149,6 +151,11 @@ define module network_admission as
       request_host, request_path);
     if selected.is_err(); then return Err("reverse route not found"); fi
     val route = selected.unwrap();
+    // Route selection is not proof that any configured middleware ran.
+    // Without a generation-pinned supervisor receipt, deny every such route.
+    if route.middleware != ""; then
+      return Err("middleware admission receipt required before upstream egress");
+    fi
     if route.upstream != endpoint.origin ||
       !proxy_yaml.valid_upstream_origin(route.upstream); then
       return Err("resolved endpoint does not match admitted HTTP origin");
