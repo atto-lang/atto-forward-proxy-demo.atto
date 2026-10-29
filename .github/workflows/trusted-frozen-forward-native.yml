@@ -273,7 +273,7 @@ jobs:
             'actual_manifest_sha="$(cd "$runtime_root" && /usr/bin/find . -xdev -type f -print0 | LC_ALL=C /usr/bin/sort -z | /usr/bin/xargs -0 /usr/bin/sha256sum | /usr/bin/sha256sum | /usr/bin/cut -d " " -f 1)"' \
             'test "$actual_manifest_sha" = "$expected_manifest_sha" || { echo "approved Oreslang runtime file set changed" >&2; exit 1; }' \
             'test -x "$launcher" || exit 1' \
-            'exec "$launcher" "$@"' >> "$wrapper"
+            'exec /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"' >> "$wrapper"
           chmod 700 "$wrapper"
           timeout 15s "$wrapper" --version || timeout 15s "$wrapper" --build-info || timeout 15s "$wrapper" --help
           printf "ORESLANG_VERIFIED_WRAPPER=%s\n" "$wrapper" >> "$GITHUB_ENV"
