@@ -280,6 +280,8 @@ jobs:
           wrapper="$wrapper_dir/oreslang"
           printf '%s\n' '#!/bin/bash' 'set -euo pipefail' > "$wrapper"
           printf 'runtime_root=%q\n' "$runtime_root" >> "$wrapper"
+          printf 'java_root=%q\n' "$java_root" >> "$wrapper"
+          printf 'java_exe=%q\n' "$java_exe" >> "$wrapper"
           printf 'expected_manifest_sha=%q\n' "$approved_manifest_sha" >> "$wrapper"
           printf 'launcher=%q\n' "$launcher" >> "$wrapper"
           printf '%s\n' \
