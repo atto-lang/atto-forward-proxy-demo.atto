@@ -90,6 +90,33 @@ jobs:
           command -v oreslang
           sha256sum "$(command -v oreslang)"
           java -version
+
+      # Completeness of the review inventory is checked before any guest code.
+      - name: Match reviewed source and pure-test inventories
+        shell: bash
+        run: |
+          set -euo pipefail
+          find src tests -type f -name '*.ores' -print | LC_ALL=C sort > "$RUNNER_TEMP/oreslang-files.txt"
+          diff -u ci/oreslang-files.txt "$RUNNER_TEMP/oreslang-files.txt"
+          find tests -maxdepth 1 -type f -name '*_contract.ores' -print | LC_ALL=C sort > "$RUNNER_TEMP/pure-contracts.txt"
+          diff -u ci/pure-contracts.txt "$RUNNER_TEMP/pure-contracts.txt"
+          test -z "$(find src tests -type l -name '*.ores' -print -quit)"
+      - name: Compiler-check complete reviewed Oreslang inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            test -n "$file" || continue
+            timeout --signal=TERM --kill-after=2s 120s "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" --check "$file"
+          done < ci/oreslang-files.txt
+      - name: Execute complete reviewed standalone contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            test -n "$file" || continue
+            timeout --signal=TERM --kill-after=2s 120s "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" "$file"
+          done < ci/pure-contracts.txt
       - name: Compiler-check entrypoint
         run: oreslang --check src/main.ores
       - name: Compiler-check configuration path admission
