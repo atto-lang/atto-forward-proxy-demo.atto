@@ -197,6 +197,13 @@ jobs:
           test "$(id -u)" != 0 || { echo 'native runner must not execute as root' >&2; exit 1; }
           test -d "$runtime_root" || { echo 'approved runtime tree missing' >&2; exit 1; }
           test -f "$launcher" && test -x "$launcher" || { echo 'approved runtime missing executable bin/oreslang' >&2; exit 1; }
+          # find -xdev silently skips nested mounts, including file bind mounts.
+          # Reject them before hashing; otherwise the approved manifest can omit files.
+          test -r /proc/self/mountinfo && test -x /usr/bin/awk || { echo 'mount verifier unavailable' >&2; exit 1; }
+          test -z "$(/usr/bin/awk -v prefix="$runtime_root/" 'index($5,prefix)==1 {print $5; exit}' /proc/self/mountinfo)" || {
+            echo 'approved runtime tree contains an unverified nested mount' >&2
+            exit 1
+          }
           # Every ancestor and every runtime object must be root-owned and
           # immutable to the non-root runner account. Links and special files
           # are rejected so path resolution cannot escape the approved tree.
@@ -254,6 +261,8 @@ jobs:
           printf '%s\n' \
             'test "$(id -u)" != 0 || exit 1' \
             'test -d "$runtime_root" && test -f "$launcher" && test -x "$launcher" || exit 1' \
+            'test -r /proc/self/mountinfo && test -x /usr/bin/awk || exit 1' \
+            'test -z "$(/usr/bin/awk -v prefix="$runtime_root/" "index(\$5,prefix)==1 {print \$5; exit}" /proc/self/mountinfo)" || { echo "approved Oreslang runtime contains nested mount" >&2; exit 1; }' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev -type l -print -quit)" || exit 1' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev ! -type d ! -type f -print -quit)" || exit 1' \
             'test -z "$(/usr/bin/find "$runtime_root" -xdev \( ! -uid 0 -o -perm /022 \) -print -quit)" || exit 1' \
