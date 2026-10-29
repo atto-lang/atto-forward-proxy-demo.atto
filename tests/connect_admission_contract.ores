@@ -1,5 +1,6 @@
 import module generation from "../src/generation";
 import module connect_admission from "../src/connect_admission";
+import module service_bindings from "../src/service_bindings";
 
 pub routine main(): int {
   val String doc = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\nservices:\n  - name: egress-policy\n    kind: actor\n    target: egress-v1\n";
@@ -7,7 +8,33 @@ pub routine main(): int {
   if opened.is_err(); then stdio.println("FAIL valid CONNECT policy YAML"); return 1; fi
   val supervisor = opened.unwrap();
   val snapshot = supervisor.snapshot().unwrap();
-  val admitted = connect_admission.plan(rt borrow snapshot,
+  let Array<service_bindings.CodeImage> images =
+    new Array<service_bindings.CodeImage>();
+  images.add(new service_bindings.CodeImage("egress-v1", "abi-v1", false));
+  images.add(new service_bindings.CodeImage("egress-v2", "abi-v1", false));
+  val trusted_result = service_bindings.registry(images);
+  if trusted_result.is_err(); then
+    stdio.println("FAIL trusted policy registry"); return 1;
+  fi
+  val trusted = trusted_result.unwrap();
+  let Array<service_bindings.CodeImage> unrelated =
+    new Array<service_bindings.CodeImage>();
+  unrelated.add(new service_bindings.CodeImage("unrelated-v1", "abi-v1", false));
+  val wrong = service_bindings.registry(unrelated).unwrap();
+  let Array<service_bindings.CodeImage> privileged =
+    new Array<service_bindings.CodeImage>();
+  privileged.add(new service_bindings.CodeImage("egress-v1", "abi-v1", true));
+  val network_actor = service_bindings.registry(privileged).unwrap();
+  if connect_admission.plan(rt borrow snapshot, rt borrow wrong,
+      "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
+      "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot, rt borrow network_actor,
+      "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
+      "egress-policy").is_ok(); then
+    stdio.println("FAIL unregistered or network-capable policy actor"); return 1;
+  fi
+
+  val admitted = connect_admission.plan(rt borrow snapshot, rt borrow trusted,
     "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
     "egress-policy");
   if admitted.is_err(); then stdio.println("FAIL safe intent"); return 1; fi
@@ -18,19 +45,19 @@ pub routine main(): int {
     stdio.println("FAIL symbolic intent leaked egress authority"); return 1;
   fi
 
-  if connect_admission.plan(rt borrow snapshot,
+  if connect_admission.plan(rt borrow snapshot, rt borrow trusted,
       "CONNECT evil.example.invalid:443 HTTP/1.1",
       "evil.example.invalid:443", "egress-policy").is_ok() ||
-    connect_admission.plan(rt borrow snapshot,
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
       "CONNECT api.example.test:80 HTTP/1.1",
       "api.example.test:80", "egress-policy").is_ok() ||
-    connect_admission.plan(rt borrow snapshot,
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
       "CONNECT api.example.test:443 HTTP/1.1",
       "evil.example.test:443", "egress-policy").is_ok() ||
-    connect_admission.plan(rt borrow snapshot,
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
       "CONNECT api.example.test:443 HTTP/1.1",
       "api.example.test:443", "missing").is_ok() ||
-    connect_admission.plan(rt borrow snapshot,
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
       "CONNECT 127.0.0.1:443 HTTP/1.1",
       "127.0.0.1:443", "egress-policy").is_ok(); then
     stdio.println("FAIL forbidden CONNECT intent"); return 1;
@@ -42,7 +69,7 @@ pub routine main(): int {
   val newer = supervisor.publish(1);
   if newer.is_err(); then stdio.println("FAIL policy generation publish"); return 1; fi
   val refreshed = newer.unwrap();
-  val new_intent = connect_admission.plan(rt borrow refreshed,
+  val new_intent = connect_admission.plan(rt borrow refreshed, rt borrow trusted,
     "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443",
     "egress-policy");
   if new_intent.is_err() || new_intent.unwrap().actor_image != "egress-v2" ||

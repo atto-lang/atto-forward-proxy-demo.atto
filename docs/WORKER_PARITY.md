@@ -20,8 +20,11 @@ from a YAML string.
 `kind: actor` and `target`. All three identifiers are ASCII lower-case,
 digits/hyphens only; every referenced service must exist. Duplicate names,
 missing fields, unsupported kinds, whitespace, path escapes and arbitrary URL
-bindings fail. `src/service_bindings.ores` produces immutable
-generation-scoped **symbolic descriptors**, not runtime ActorRefs.
+bindings fail. `src/service_bindings.ores` now also requires a supervisor-owned trusted
+code-image registry before a YAML target can bind. YAML cannot register a code
+image or widen its capability manifest. The result remains an immutable,
+generation-scoped **symbolic descriptor**, not a runtime ActorRef or socket
+capability.
 
 `config/worker-example.yaml` declares an `egress-policy` actor
 binding for future pre-egress middleware. It is NOT wired into a CONNECT
@@ -42,8 +45,15 @@ and an elementary failure-threshold circuit-breaker with cooldown. These are
 reference calculations, **not** shared HAProxy stick tables, production-wide
 rate limits or live latency sensors. Half-open admits MUST require an
 exclusive supervisor-issued probe lease before network integration.
-Generation changes intentionally reset counters, and monotonic time is
-provided by a trusted caller, never derived from a request header.
+Generation changes intentionally reset counters, and monotonic time is provided by a trusted caller, never derived from a request header.
+
+`src/network_admission.ores` composes the current request-slot lease, immutable configuration epoch, rate decision, breaker state, CONNECT allowlist, and a trusted resolver's pinned/public-address classification immediately before any future outbound transport. Its `ForwardPermit` is only a proof descriptor; the transport must not treat it as dial authority.
+
+`src/network_admission.ores` composes the current request-slot lease, immutable
+configuration epoch, rate decision, breaker state, CONNECT allowlist, and a
+trusted resolver's DNS-pinned/public-address classification immediately before
+a future transport would mint a socket capability. Its `ForwardPermit` is only
+a proof descriptor: `std/net` MUST NOT accept it directly as dial authority.
 
 ## Future parity matrix
 
@@ -60,7 +70,7 @@ provided by a trusted caller, never derived from a request header.
 | Caching, ETag, compression, TLS/mTLS, WAF | Not implemented; unsafe to claim coverage |
 | Workerd compatibility dates and API versioning | Not implemented; future per-code-image ABI/capability manifest and compatibility-date gate |
 | Deploy/reload without downtime | Pure generation coordinator only; no atomic live route swap/request pins/drain proof |
-| Forward CONNECT, auth, SSRF-proof egress | No tunnel or authenticated egress; remains fail closed |
+| Forward CONNECT, auth, SSRF-proof egress | Pure pre-dial authority oracle now rejects stale epoch/lease, rate/breaker denial and unpinned/private endpoints; no socket capability, auth, resolver proof or tunnel yet |
 | LLVM/Graal cross-backend | Unverified; requires exact-head actual execution, not parser substitutes |
 
 ## Non-negotiable production acceptance
@@ -122,13 +132,15 @@ from a syntactically valid YAML origin.
 
 `src/connect_admission.ores` composes parsed CONNECT authority, the
 strictly declared egress domain allowlist and a generation-pinned symbolic
-`egress-policy` actor binding. It explicitly returns a *non-authorizing*
+`egress-policy` actor binding, resolved through an explicit supervisor-owned
+trusted code-image registry. It explicitly returns a *non-authorizing*
 intent descriptor with `socket_authorized=false`, and the pure
 `may_connect` test cannot confer a NET capability. This is deliberate:
 there is no guest-facing raw duplex TCP relay, verified proxy authentication,
 resolved IP pinning or transport-minted request-scoped connect token yet.
 
-`tests/connect_admission_contract.ores` covers canonical CONNECT,
+`tests/connect_admission_contract.ores` rejects unregistered or
+network-capable policy actor images and covers canonical CONNECT,
 unauthorized hosts/ports, Host mismatch, undeclared policy actors and
 old/new configuration-generation isolation. The native self-hosted JDK25
 workflow is updated to compile and execute that test, but a queued job is

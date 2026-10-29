@@ -15,10 +15,13 @@ define module connect_admission as
     pub val bool socket_authorized;
   end
 
+  // This registry must originate with the trusted supervisor, never YAML.
+  // A pure descriptor cannot independently prove its registry provenance.
   // A trusted ingress parser must already have checked raw framing, duplicate
   // Host/TE/CL and authentication *before* this helper is called. This helper
   // performs no authentication and cannot be used as an egress decision.
   pub fnc plan(borrow generation.Snapshot snapshot,
+               borrow service_bindings.Registry trusted,
                String request_line, String host_header, String service_name):
       Result<Intent, String> {
     if snapshot.configuration.mode != "forward" ||
@@ -33,10 +36,11 @@ define module connect_admission as
       rt borrow target); then
       return Err("CONNECT destination outside domain policy");
     fi
-    val found = service_bindings.bind(snapshot, service_name);
+    val found = service_bindings.bind(snapshot, trusted, service_name);
     if found.is_err(); then return Err("no declared egress policy actor"); fi
     val actor = found.unwrap();
-    if actor.kind != "actor" || actor.epoch != snapshot.epoch; then
+    if actor.kind != "actor" || actor.epoch != snapshot.epoch ||
+      actor.network_capable; then
       return Err("invalid or stale policy actor binding");
     fi
     // A service binding does not grant NET. Only the future runtime transport
