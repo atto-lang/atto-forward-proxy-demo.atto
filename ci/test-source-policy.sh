@@ -126,8 +126,20 @@ git -C "$test_repo" add src/disguised.txt
 check_ok
 git -C "$test_repo" rm -q -f -- src/disguised.txt
 check_ok
+# A symlinked *parent* can lead to an external regular file with the same
+# Git blob: -f, ! -L on the leaf, and hash-object all accepted this before.
+external_dir="$test_repo.external"
+mkdir -p "$external_dir"
+cp "$test_repo/src/hello.ores" "$external_dir/hello.ores"
+mv "$test_repo/src" "$test_repo/src-original"
+ln -s "$external_dir" "$test_repo/src"
+check_bad
+rm "$test_repo/src"
+mv "$test_repo/src-original" "$test_repo/src"
+rm -rf "$external_dir"
+check_ok
 # An untracked but SHA-shaped SOURCE_REF is not provenance.
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=22\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=23\n'
