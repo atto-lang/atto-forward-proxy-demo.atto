@@ -59,4 +59,17 @@ git add tests/extra.ores
 reject
 git rm -q -f tests/extra.ores
 pass
-printf 'SOURCE_INVENTORY_NEGATIVE_TESTS_PASS scenarios=7\n'
+# An inherited alternate index must not hide an extra tracked Oreslang source.
+GIT_INDEX_FILE="$tmp/.git/alternate-index" git read-tree HEAD
+printf 'hidden\\n' > src/hidden.ores
+git add src/hidden.ores
+GIT_INDEX_FILE="$tmp/.git/alternate-index" reject
+git rm -q -f src/hidden.ores
+pass
+# A damaged real index must fail rather than be masked by process substitution.
+cp "$tmp/.git/index" "$tmp/index-backup"
+printf 'corrupt-index\\n' > "$tmp/.git/index"
+reject
+mv "$tmp/index-backup" "$tmp/.git/index"
+pass
+printf 'SOURCE_INVENTORY_NEGATIVE_TESTS_PASS scenarios=9\\n'
