@@ -80,7 +80,6 @@ printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
 # A tracked SOURCE_REF deleted only from the worktree must fail.
 rm -f "$test_repo/SOURCE_REF"
-git -C "$test_repo" add SOURCE_REF
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 git -C "$test_repo" add SOURCE_REF
