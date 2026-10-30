@@ -1,0 +1,50 @@
+name: Forward proxy source contracts
+on:
+  pull_request:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  inventory:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.id == 1429955596 &&
+       github.event.pull_request.base.repo.id == 1429955596)
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          submodules: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact checked-out source head
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]]
+          [[ -z "$(git status --porcelain)" ]]
+          printf 'EXACT_DEMO_HEAD=%s\n' "$EXPECTED_DEMO_SHA"
+          printf 'EXACT_DEMO_TREE=%s\n' "$(git rev-parse HEAD^{tree})"
+      - name: Reject absent, empty, untracked or symlinked contract inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in src/main.ores src/proxy_wire.ores src/header_policy.ores src/slot_pool.ores tests/wire_contract.ores tests/header_policy_contract.ores tests/slot_pool_contract.ores config/example.yaml .cli-flags.toml; do
+            test -f "$file"
+            test -s "$file"
+            test ! -L "$file"
+            git ls-files --error-unmatch -- "$file" >/dev/null
+            [[ "$(git ls-files --stage -- "$file")" == "100644 "* ]]
+            cmp -s "$file" <(git show "HEAD:$file")
+          done
+          test -z "$(find src tests config -type l -print -quit)"
+          echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=9'
+      - name: Clearly separate source inventory from runtime verdict
+        shell: bash
+        run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
