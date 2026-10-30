@@ -53,6 +53,9 @@ check_ok rest-legacy
 printf 'new\n' > "$test_repo/scripts/new_tool.py"
 git -C "$test_repo" add .
 check_bad rest-legacy
+# Reset the earlier negative fixtures before testing valid-source baselines.
+git -C "$test_repo" rm -q -f -- scripts/new_tool.py scripts/benchmark.py
+check_ok
 # Optional SOURCE_REF cannot be replaced by a tracked symlink, even if its target is valid.
 mv "$test_repo/SOURCE_REF" "$test_repo/saved_ref"
 ln -s saved_ref "$test_repo/SOURCE_REF"
