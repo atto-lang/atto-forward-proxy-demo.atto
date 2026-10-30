@@ -42,6 +42,25 @@ for interpreter in "'python3'" '"python3"' "'py''thon3'"; do
   check_bad
   git -C "$test_repo" rm -q -f -- quoted-interpreter
 done
+# GNU env -S also expands environment variables before interpreter lookup.
+# Reject both unquoted and quoted variable-based executable selection.
+for interpreter in '${ORES_POLICY_INTERPRETER}' '"${ORES_POLICY_INTERPRETER}"'; do
+  printf '#!/usr/bin/env -S %s\n' "$interpreter" > "$test_repo/dynamic-interpreter"
+  git -C "$test_repo" add dynamic-interpreter
+  check_bad
+  git -C "$test_repo" rm -q -f -- dynamic-interpreter
+done
+# Reject ABI/debug interpreters not caught by a digits-and-dots-only regex.
+for interpreter in python3.7m python3.11-dbg python3.11d; do
+  printf '#!/usr/bin/env -S %s\n' "$interpreter" > "$test_repo/abi-interpreter"
+  git -C "$test_repo" add abi-interpreter
+  check_bad
+  git -C "$test_repo" rm -q -f -- abi-interpreter
+done
+printf '#!/usr/bin/python3.7m\n' > "$test_repo/direct-abi-interpreter"
+git -C "$test_repo" add direct-abi-interpreter
+check_bad
+git -C "$test_repo" rm -q -f -- direct-abi-interpreter
 # The stricter guard must not reject unrelated interpreters.
 printf '#!/usr/bin/env node\n' > "$test_repo/node-interpreter"
 git -C "$test_repo" add node-interpreter
@@ -142,4 +161,4 @@ check_ok
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=23\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=29\n'
