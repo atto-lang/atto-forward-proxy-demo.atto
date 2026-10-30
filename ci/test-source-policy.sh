@@ -61,6 +61,14 @@ printf '#!/usr/bin/python3.7m\n' > "$test_repo/direct-abi-interpreter"
 git -C "$test_repo" add direct-abi-interpreter
 check_bad
 git -C "$test_repo" rm -q -f -- direct-abi-interpreter
+# GNU env -S interprets \_ as a word separator before selecting Python.
+# The original backslash-removal regex sees _python3 and incorrectly permits it.
+for interpreter in '\_python3' '\_ python3'; do
+  printf '#!/usr/bin/env -S %s\n' "$interpreter" > "$test_repo/escaped-separator"
+  git -C "$test_repo" add escaped-separator
+  check_bad
+  git -C "$test_repo" rm -q -f -- escaped-separator
+done
 # The stricter guard must not reject unrelated interpreters.
 printf '#!/usr/bin/env node\n' > "$test_repo/node-interpreter"
 git -C "$test_repo" add node-interpreter
@@ -161,4 +169,4 @@ check_ok
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=29\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=31\n'
