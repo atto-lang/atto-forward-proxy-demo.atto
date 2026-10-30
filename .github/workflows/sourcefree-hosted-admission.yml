@@ -1,0 +1,25 @@
+# No checkout, caches, artifacts, compiler, secrets or source transfer.
+name: Source-free hosted runner admission
+on:
+  pull_request:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  allocation-only:
+    if: >-
+      github.repository_id == '1429955596' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.id == 1429955596 &&
+        github.event.pull_request.base.repo.id == 1429955596 &&
+        github.event.pull_request.base.ref == 'main') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Prove hosted step execution without source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'HOSTED_SOURCEFREE_STEP_EXECUTED'
+          echo 'NOT_EXECUTED: no Oreslang compiler, guest or source-policy tests'

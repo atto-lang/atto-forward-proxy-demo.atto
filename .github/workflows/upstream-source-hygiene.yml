@@ -9,13 +9,33 @@ permissions:
   contents: read
 jobs:
   structural-only:
+    if: >-
+      github.repository_id == '1429955596' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.id == 1429955596 &&
+        github.event.pull_request.base.repo.id == 1429955596 &&
+        github.event.pull_request.base.ref == 'main') ||
+       ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+        github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+          submodules: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact checked-out head and clean tracked files
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DEMO_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]]
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+          printf 'EXACT_DEMO_HEAD=%s\n' "$EXPECTED_DEMO_SHA"
+          printf 'EXACT_DEMO_TREE=%s\n' "$(git rev-parse HEAD^{tree})"
       - name: Validate source-tip contract and optional immutable compiler pin
         shell: bash
         run: |

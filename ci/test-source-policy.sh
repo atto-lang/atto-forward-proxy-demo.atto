@@ -53,4 +53,29 @@ check_ok rest-legacy
 printf 'new\n' > "$test_repo/scripts/new_tool.py"
 git -C "$test_repo" add .
 check_bad rest-legacy
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=8\n'
+git -C "$test_repo" rm -q -f -- scripts/new_tool.py scripts/benchmark.py
+ln -s /etc/hosts "$test_repo/README.md"
+git -C "$test_repo" add .
+check_bad
+git -C "$test_repo" rm -q -f -- README.md
+rm -f "$test_repo/SOURCE_REF"
+ln -s /etc/hosts "$test_repo/SOURCE_REF"
+git -C "$test_repo" add .
+check_bad
+git -C "$test_repo" rm -q -f -- SOURCE_REF
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+git -C "$test_repo" add .
+check_ok
+git -C "$test_repo" update-index --add --cacheinfo 160000,0123456789012345678901234567890123456789,src/dependency
+check_bad
+git -C "$test_repo" update-index --force-remove src/dependency
+rm -f "$test_repo/src/hello.ores"
+check_bad
+printf '00_abc\n' > "$test_repo/src/hello.ores"
+check_ok
+git -C "$test_repo" rm -q -f SOURCE_REF
+printf 'b%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+check_bad
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=17\n'
