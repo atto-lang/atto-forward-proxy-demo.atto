@@ -1,0 +1,26 @@
+name: Forward proxy source contracts
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Reject missing, empty or linked contract inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in src/main.ores src/proxy_wire.ores src/header_policy.ores src/slot_pool.ores tests/wire_contract.ores tests/header_policy_contract.ores tests/slot_pool_contract.ores config/example.yaml .cli-flags.toml; do
+            test -f "$file"
+            test -s "$file"
+            test ! -L "$file"
+          done
+          test -z "$(find src tests config -type l -print -quit)"
+      - name: Clearly separate source from compiler verdict
+        run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
