@@ -72,3 +72,9 @@ jobs:
           EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SOURCE_POLICY_MODE: strict
         run: bash ci/source-policy.sh
+      - name: Test tracked source and pure contract inventory regressions
+        shell: bash
+        run: bash ci/ores-test-source-inventory.sh
+      - name: Require complete Git-indexed Oreslang source and test inventories
+        shell: bash
+        run: bash ci/ores-verify-source-inventory.sh
