@@ -1,0 +1,77 @@
+# Host-only. Exact-file canonical fixture; no Python tooling or Oreslang guest claim.
+name: Forward proxy safe defaults
+on:
+  pull_request:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  policy:
+    if: >-
+      github.repository_id == '1429955596' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.id == 1429955596 &&
+        github.event.pull_request.base.repo.id == 1429955596 &&
+        github.event.pull_request.base.ref == 'main') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          submodules: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Admit exact clean tracked head
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DEMO_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]]
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+          printf 'SAFE_DEFAULTS_HEAD=%s\n' "$EXPECTED_DEMO_SHA"
+          printf 'SAFE_DEFAULTS_TREE=%s\n' "$(git rev-parse HEAD^{tree})"
+      - name: Validate canonical config and flags without Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          cat > "$temp_dir/flags" <<'EXPECTED_FLAGS'
+          # Native Oreslang proxy flags-2-env contract.
+          [flags.config-yaml]
+          env = "ores_proxy_conf_yaml"
+          aliases = ["config-yaml", "conf"]
+          type = "string"
+          help = "Absolute trusted path to a proxy YAML configuration file."
+          EXPECTED_FLAGS
+          cat > "$temp_dir/config" <<'EXPECTED_CONFIG'
+          version: ores.proxy/v1
+          mode: forward
+          listen:
+            host: 127.0.0.1
+            port: 8080
+          runtime:
+            carriers: 20
+            actors: 100
+            max_inflight: 1024
+          policy:
+            deny_private: true
+            allow_domains: example.test,api.example.test
+            connect_ports: 443
+          EXPECTED_CONFIG
+          for entry in ".cli-flags.toml:flags" "config/example.yaml:config"; do
+            path="${entry%%:*}"
+            expected="${entry#*:}"
+            test -f "$path" && test ! -L "$path" &&
+              git ls-files --error-unmatch -- "$path" >/dev/null 2>&1 &&
+              cmp -s "$path" "$temp_dir/$expected" || {
+                echo "SAFE_DEFAULTS_FAILURE: noncanonical $path" >&2
+                exit 1
+              }
+          done
+          echo 'SAFE_DEFAULTS_STRUCTURAL_PASS; NATIVE_NOT_EXECUTED'
