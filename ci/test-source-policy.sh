@@ -78,4 +78,33 @@ git -C "$test_repo" rm -q -f SOURCE_REF
 printf 'b%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=17\n'
+# A tracked SOURCE_REF deleted only from the worktree must fail.
+rm -f "$test_repo/SOURCE_REF"
+git -C "$test_repo" add SOURCE_REF
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+git -C "$test_repo" add SOURCE_REF
+rm "$test_repo/SOURCE_REF"
+check_bad
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+git -C "$test_repo" add SOURCE_REF
+check_ok
+# A missing optional SOURCE_REF plus poisoned index must not hide Python.
+git -C "$test_repo" rm -q -f -- SOURCE_REF
+printf 'print(1)\n' > "$test_repo/src/hidden.py"
+git -C "$test_repo" add src/hidden.py
+GIT_INDEX_FILE="$test_repo/.git/nonexistent-index" check_bad
+git -C "$test_repo" rm -q -f -- src/hidden.py
+check_ok
+# An unreadable/corrupt real index must fail before either audit loop.
+cp "$test_repo/.git/index" "$test_repo/index-backup"
+printf 'corrupt-index\n' > "$test_repo/.git/index"
+check_bad
+mv "$test_repo/index-backup" "$test_repo/.git/index"
+check_ok
+# An untracked but SHA-shaped SOURCE_REF is not provenance.
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+check_bad
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=21\n'
