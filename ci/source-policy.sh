@@ -52,6 +52,14 @@ while IFS= read -r -d '' entry; do
   [[ -f "$path" && ! -L "$path" ]] || {
     echo "POLICY_FAILURE: tracked file absent or replaced: $path" >&2; exit 2;
   }
+  # A staged blob may differ from a harmless-looking worktree file. Verify
+  # the exact raw bytes that Git would commit, without invoking clean filters.
+  actual_blob="$(git_safe hash-object --no-filters -- "$path")" || {
+    echo "POLICY_FAILURE: unable to hash tracked file: $path" >&2; exit 2;
+  }
+  [[ "$actual_blob" == "$object" ]] || {
+    echo "POLICY_FAILURE: staged blob differs from audited worktree: $path" >&2; exit 2;
+  }
 done < "$stage_list"
 count=0
 while IFS= read -r -d '' path; do
