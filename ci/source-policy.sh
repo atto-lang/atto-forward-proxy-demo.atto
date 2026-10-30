@@ -5,14 +5,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 root="${SOURCE_POLICY_ROOT:-$repo_root}"
 root="$(cd "$root" && pwd -P)"
 cd "$root"
-[[ "$(git rev-parse --show-toplevel)" == "$root" ]] || { echo "POLICY_FAILURE: Git repository root mismatch" >&2; exit 2; }
+# Reject redirected Git index/object inventories from reused CI environments.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_SHALLOW_FILE GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_EXEC_PATH GIT_CONFIG
+export GIT_CONFIG_COUNT=0 GIT_CONFIG_PARAMETERS='' GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+[[ -d "$root/.git" && ! -L "$root/.git" ]] || { echo "POLICY_FAILURE: expected a real checkout Git directory" >&2; exit 2; }
+git_safe() { /usr/bin/git -c core.fsmonitor=false --no-replace-objects --git-dir="$root/.git" --work-tree="$root" "$@"; }
+[[ "$(git_safe rev-parse --show-toplevel)" == "$root" ]] || { echo "POLICY_FAILURE: Git repository root mismatch" >&2; exit 2; }
 if [[ -n "${EXPECTED_DEMO_SHA:-}" ]]; then
   [[ "${EXPECTED_DEMO_SHA}" =~ ^[a-f0-9]{40}$ ]] || { echo "POLICY_FAILURE: invalid expected head" >&2; exit 2; }
-  [[ "$(git rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]] || { echo "POLICY_FAILURE: mismatched head" >&2; exit 2; }
+  [[ "$(git_safe rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]] || { echo "POLICY_FAILURE: mismatched head" >&2; exit 2; }
 fi
-if [[ -e SOURCE_REF || -L SOURCE_REF ]]; then
+if [[ -e SOURCE_REF || -L SOURCE_REF ]] || git_safe ls-files --error-unmatch -- SOURCE_REF >/dev/null 2>&1; then
   [[ ! -L SOURCE_REF && -f SOURCE_REF ]] &&
-    git ls-files --error-unmatch -- SOURCE_REF >/dev/null 2>&1 || {
+    git_safe ls-files --error-unmatch -- SOURCE_REF >/dev/null 2>&1 || {
     echo 'POLICY_FAILURE: symlinked or untracked SOURCE_REF' >&2; exit 2;
   }
   [[ "$(wc -l < SOURCE_REF)" -eq 1 ]] && grep -Eq '^[a-f0-9]{40}$' SOURCE_REF && [[ "$(wc -c < SOURCE_REF)" -eq 41 ]] || {
@@ -21,6 +26,14 @@ if [[ -e SOURCE_REF || -L SOURCE_REF ]]; then
 fi
 mode="${SOURCE_POLICY_MODE:-strict}"
 [[ "$mode" == strict || "$mode" == rest-legacy ]] || { echo "POLICY_FAILURE: unknown mode" >&2; exit 2; }
+# Do not mask Git failures behind process substitution: both inventories must
+# be produced successfully from the actual checkout index, and be nonempty.
+stage_list="$(/usr/bin/mktemp)" || exit 2
+tracked_list="$(/usr/bin/mktemp)" || exit 2
+trap '/usr/bin/rm -f -- "$stage_list" "$tracked_list"' EXIT
+git_safe ls-files --stage -z > "$stage_list" || { echo "POLICY_FAILURE: failed staged inventory" >&2; exit 2; }
+git_safe ls-files -z --cached > "$tracked_list" || { echo "POLICY_FAILURE: failed tracked inventory" >&2; exit 2; }
+[[ -s "$stage_list" && -s "$tracked_list" ]] || { echo "POLICY_FAILURE: empty tracked index" >&2; exit 2; }
 # Reject all tracked symlinks, gitlinks, and unmerged index entries.
 # Metadata is the Git index; filename extensions alone are insufficient.
 while IFS= read -r -d '' entry; do
@@ -39,7 +52,7 @@ while IFS= read -r -d '' entry; do
   [[ -f "$path" && ! -L "$path" ]] || {
     echo "POLICY_FAILURE: tracked file absent or replaced: $path" >&2; exit 2;
   }
-done < <(git ls-files --stage -z)
+done < "$stage_list"
 count=0
 while IFS= read -r -d '' path; do
   count=$((count+1))
@@ -74,7 +87,7 @@ while IFS= read -r -d '' path; do
       exit 2
     fi
   fi
-done < <(git ls-files -z --cached)
+done < "$tracked_list"
 printf 'SOURCE_POLICY_STRUCTURAL_PASS tracked_files=%s mode=%s\n' "$count" "$mode"
 if [[ "$mode" == rest-legacy ]]; then
   echo 'LEGACY_PYTHON_NONCOMPLIANT: complete Rust replacement remains required'
