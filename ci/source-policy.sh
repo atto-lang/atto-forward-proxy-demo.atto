@@ -52,6 +52,11 @@ while IFS= read -r -d '' entry; do
   [[ -f "$path" && ! -L "$path" ]] || {
     echo "POLICY_FAILURE: tracked file absent or replaced: $path" >&2; exit 2;
   }
+  # A regular file reached through a symlinked parent directory is still
+  # outside the audited checkout, even when its raw blob matches the index.
+  [[ "$(/usr/bin/realpath -e -- "$path")" == "$root/$path" ]] || {
+    echo "POLICY_FAILURE: tracked file escapes checkout through parent path: $path" >&2; exit 2;
+  }
   # A staged blob may differ from a harmless-looking worktree file. Verify
   # the exact raw bytes that Git would commit, without invoking clean filters.
   actual_blob="$(git_safe hash-object --no-filters -- "$path")" || {
