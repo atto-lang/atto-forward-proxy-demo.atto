@@ -102,8 +102,19 @@ printf 'corrupt-index\n' > "$test_repo/.git/index"
 check_bad
 mv "$test_repo/index-backup" "$test_repo/.git/index"
 check_ok
+# A forged staged Python blob hidden behind benign worktree bytes must fail.
+printf 'safe\n' > "$test_repo/src/disguised.txt"
+git -C "$test_repo" add src/disguised.txt
+check_ok
+forged_blob="$(printf '#!/usr/bin/env python3\nprint(1)\n' | git -C "$test_repo" hash-object -w --stdin)"
+git -C "$test_repo" update-index --cacheinfo "100644,$forged_blob,src/disguised.txt"
+check_bad
+git -C "$test_repo" add src/disguised.txt
+check_ok
+git -C "$test_repo" rm -q -f -- src/disguised.txt
+check_ok
 # An untracked but SHA-shaped SOURCE_REF is not provenance.
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 check_bad
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=21\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=22\n'
