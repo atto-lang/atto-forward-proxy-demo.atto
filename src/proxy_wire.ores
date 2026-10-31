@@ -70,7 +70,11 @@ define module proxy_wire as
   // DNS/IP validation and authenticated request admission are still missing.
   pub fnc configured_connect(borrow proxy_yaml.Config config,
                              borrow Target parsed): bool {
-    if !parsed.tunnel || parsed.method != "CONNECT"; then return false; fi
+    // Target is a public value: only the normalized pathless CONNECT shape
+    // is admissible. Parsing must precede this check; this is not an egress
+    // capability or a substitute for raw Host/framing/DNS/IP verification.
+    if !parsed.tunnel || parsed.method != "CONNECT" ||
+      parsed.path != ""; then return false; fi
     return route_policy.configured_domain(config, parsed.authority);
   }
 
