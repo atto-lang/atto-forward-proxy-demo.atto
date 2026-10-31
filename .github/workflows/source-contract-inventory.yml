@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in src/main.ores src/proxy_wire.ores src/header_policy.ores src/http_framing.ores src/slot_pool.ores tests/wire_contract.ores tests/header_policy_contract.ores tests/http_framing_contract.ores tests/slot_pool_contract.ores config/example.yaml .cli-flags.toml; do
+          for file in src/config_path.ores src/data_layout.ores src/generation.ores src/header_policy.ores src/http_framing.ores src/main.ores src/middleware_manifest.ores src/middleware_policy.ores src/proxy_wire.ores src/proxy_yaml.ores src/route_policy.ores src/slot_lifecycle.ores src/slot_pool.ores tests/data_layout_contract.ores tests/generation_contract.ores tests/header_policy_contract.ores tests/http_framing_contract.ores tests/middleware_generation_contract.ores tests/middleware_manifest_contract.ores tests/path_admission_contract.ores tests/slot_lifecycle_contract.ores tests/slot_pool_contract.ores tests/wire_contract.ores tests/yaml_policy_contract.ores config/example.yaml .cli-flags.toml; do
             test -f "$file"
             test -s "$file"
             test ! -L "$file"
@@ -61,7 +61,7 @@ jobs:
           done < <(git ls-files -z -- src tests)
           test "$checked" -ge 24
           printf 'ORESLANG_SOURCE_INVENTORY_ONLY files=%s native=NOT_EXECUTED\\n' "$checked"
-          echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=11'
+          echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=26'
       - name: Run adversarial source-policy regressions
         shell: bash
         run: bash ci/test-source-policy.sh
