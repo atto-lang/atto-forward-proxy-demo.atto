@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in src/main.ores src/proxy_wire.ores src/header_policy.ores src/slot_pool.ores tests/wire_contract.ores tests/header_policy_contract.ores tests/slot_pool_contract.ores config/example.yaml .cli-flags.toml; do
+          for file in src/main.ores src/proxy_wire.ores src/header_policy.ores src/http_framing.ores src/slot_pool.ores tests/wire_contract.ores tests/header_policy_contract.ores tests/http_framing_contract.ores tests/slot_pool_contract.ores config/example.yaml .cli-flags.toml; do
             test -f "$file"
             test -s "$file"
             test ! -L "$file"
@@ -44,7 +44,24 @@ jobs:
             cmp -s "$file" <(git show "HEAD:$file")
           done
           test -z "$(find src tests config -type l -print -quit)"
-          echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=9'
+          # Inventory every tracked Oreslang source/test; never silently skip
+          # a new native contract in the source-only integrity audit.
+          checked=0
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              src/*.ores|tests/*.ores)
+                test -f "$file"
+                test -s "$file"
+                test ! -L "$file"
+                [[ "$(git ls-files --stage -- "$file")" == "100644 "* ]]
+                cmp -s "$file" <(git show "HEAD:$file")
+                checked=$((checked + 1))
+                ;;
+            esac
+          done < <(git ls-files -z -- src tests)
+          test "$checked" -ge 24
+          printf 'ORESLANG_SOURCE_INVENTORY_ONLY files=%s native=NOT_EXECUTED\\n' "$checked"
+          echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=11'
       - name: Clearly separate source inventory from runtime verdict
         shell: bash
         run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
