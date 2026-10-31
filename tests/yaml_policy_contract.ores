@@ -101,6 +101,33 @@ pub routine main(): int {
       "127.0.0.1:443"); then
     stdio.println("FAIL malformed CONNECT admitted"); return 1;
   fi
+  // Config is a public immutable value. Security-sensitive policy predicates
+  // must fail closed even when a caller supplies a non-parser-built snapshot.
+  val bad_deny = new proxy_yaml.Config("forward", "127.0.0.1", "8080",
+    "20", "100", "1024", "false", "example.test", "443",
+    new Array<proxy_yaml.Middleware>(), new Array<proxy_yaml.Route>());
+  val bad_port = new proxy_yaml.Config("forward", "127.0.0.1", "8080",
+    "20", "100", "1024", "true", "example.test", "80",
+    new Array<proxy_yaml.Middleware>(), new Array<proxy_yaml.Route>());
+  val bad_list = new proxy_yaml.Config("forward", "127.0.0.1", "8080",
+    "20", "100", "1024", "true", "example.test,evil..test", "443",
+    new Array<proxy_yaml.Middleware>(), new Array<proxy_yaml.Route>());
+  if route_policy.configured_domain(rt borrow bad_deny, "foo.example.test") ||
+    route_policy.configured_connect(rt borrow bad_deny, "CONNECT", "foo.example.test:443") ||
+    route_policy.configured_domain(rt borrow bad_port, "foo.example.test") ||
+    route_policy.configured_connect(rt borrow bad_port, "CONNECT", "foo.example.test:443") ||
+    route_policy.configured_domain(rt borrow bad_list, "foo.example.test") ||
+    route_policy.configured_connect(rt borrow bad_list, "CONNECT", "foo.example.test:443"); then
+    stdio.println("FAIL public snapshot bypassed forward deny-private/port/allowlist gates");
+    return 1;
+  fi
+  if route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443\\other") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443\u0000"); then
+    stdio.println("FAIL control-character CONNECT target");
+    return 1;
+  fi
   stdio.println("PASS native forward YAML/policy contract");
   return 0;
 }
