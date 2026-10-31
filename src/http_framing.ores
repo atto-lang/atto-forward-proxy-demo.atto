@@ -60,6 +60,12 @@ define module http_framing as
         header_policy.canonical_name(name)); then
         return Err("noncanonical HTTP header name");
       fi
+      // The restricted frame contract has no duplicate-field merge rules.
+      // Reject repeated ordinary names, including auth and middleware fields.
+      for (const prior of seen_names) {
+        if prior == name; then return Err("duplicate HTTP header name"); fi
+      }
+      seen_names.add(name);
       if name == "Host" || name == "host"; then
         hosts = hosts + 1;
         if hosts != 1; then return Err("duplicate Host header"); fi
