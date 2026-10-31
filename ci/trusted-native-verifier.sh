@@ -73,7 +73,7 @@ checkout_root="$(/usr/bin/realpath -e -- "$GITHUB_WORKSPACE")"
 done
 # Guest process receives an explicit minimal environment, not the runner's
 # inherited CI tokens, provider secrets, Git hooks or dynamic-loader settings.
-# Keep only the scoped reverse-loopback configuration variable when present.
+# Forward guest needs no inherited configuration variables.
 guest_env=(
   "JAVA_HOME=$java_root"
   "PATH=$java_root/bin:/usr/bin:/bin"
@@ -81,7 +81,4 @@ guest_env=(
   "HOME=/nonexistent"
   "TMPDIR=/tmp"
 )
-if [[ ${ores_proxy_conf_yaml+x} ]]; then
-  guest_env+=("ores_proxy_conf_yaml=$ores_proxy_conf_yaml")
-fi
 exec /usr/bin/env -i "${guest_env[@]}" /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"
