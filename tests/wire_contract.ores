@@ -19,6 +19,16 @@ pub routine main(): int {
   if proxy_wire.configured_connect(rt borrow config, rt borrow outside); then
     stdio.println("FAIL outside configured domain"); return 1;
   fi
+  // A caller can construct Target directly; the policy layer must not
+  // accept a path-bearing or non-CONNECT forged metadata object.
+  val forged_path = new proxy_wire.Target("CONNECT", "api.example.test", "/admin", true);
+  val forged_method = new proxy_wire.Target("GET", "api.example.test", "", true);
+  val forged_tunnel = new proxy_wire.Target("CONNECT", "api.example.test", "", false);
+  if proxy_wire.configured_connect(rt borrow config, rt borrow forged_path) ||
+    proxy_wire.configured_connect(rt borrow config, rt borrow forged_method) ||
+    proxy_wire.configured_connect(rt borrow config, rt borrow forged_tunnel); then
+    stdio.println("FAIL forged CONNECT metadata admission"); return 1;
+  fi
   if proxy_wire.connect("CONNECT api.example.test:80 HTTP/1.1", "api.example.test:80").is_ok() ||
     proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1", "evil.test:443").is_ok() ||
     proxy_wire.connect("GET http://api.example.test HTTP/1.1", "api.example.test").is_ok() ||
