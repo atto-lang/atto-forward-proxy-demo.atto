@@ -85,6 +85,12 @@ printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 git -C "$test_repo" add .
 check_ok
+# SOURCE_REF is a non-executable provenance file. A 100755 stage entry must
+# fail even with canonical SHA bytes and a clean regular worktree.
+git -C "$test_repo" update-index --chmod=+x -- SOURCE_REF
+check_bad
+git -C "$test_repo" update-index --chmod=-x -- SOURCE_REF
+check_ok
 mkdir -p "$test_repo/scripts"
 printf 'legacy\n' > "$test_repo/scripts/benchmark.py"
 git -C "$test_repo" add .
@@ -236,4 +242,4 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=36\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=37\n'
