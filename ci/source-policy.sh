@@ -16,11 +16,28 @@ cd "$root"
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_SHALLOW_FILE GIT_CEILING_DIRECTORIES GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_GRAFT_FILE GIT_REPLACE_REF_BASE GIT_EXEC_PATH GIT_CONFIG
 export GIT_CONFIG_COUNT=0 GIT_CONFIG_PARAMETERS='' GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 [[ -d "$root/.git" && ! -L "$root/.git" ]] || { echo "POLICY_FAILURE: expected a real checkout Git directory" >&2; exit 2; }
-git_safe() { /usr/bin/git -c core.fsmonitor=false --no-replace-objects --git-dir="$root/.git" --work-tree="$root" "$@"; }
+git_safe() { /usr/bin/git -c core.fsmonitor=false -c core.filemode=true --no-replace-objects --git-dir="$root/.git" --work-tree="$root" "$@"; }
 [[ "$(git_safe rev-parse --show-toplevel)" == "$root" ]] || { echo "POLICY_FAILURE: Git repository root mismatch" >&2; exit 2; }
 if [[ -n "${EXPECTED_DEMO_SHA:-}" ]]; then
   [[ "${EXPECTED_DEMO_SHA}" =~ ^[a-f0-9]{40}$ ]] || { echo "POLICY_FAILURE: invalid expected head" >&2; exit 2; }
   [[ "$(git_safe rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]] || { echo "POLICY_FAILURE: mismatched head" >&2; exit 2; }
+  # A pinned HEAD alone does not authenticate its index or worktree.
+  # A deleted HEAD path, staged addition, chmod, or ignored extra source must
+  # never be able to disappear from the exact-source inventory.
+  git_safe diff --no-ext-diff --cached --quiet HEAD -- || {
+    echo "POLICY_FAILURE: SHA-pinned audit has staged changes against HEAD" >&2; exit 2;
+  }
+  git_safe diff --no-ext-diff --quiet HEAD -- || {
+    echo "POLICY_FAILURE: SHA-pinned audit has modified tracked files" >&2; exit 2;
+  }
+  # Without --exclude-standard, ls-files --others includes ignored paths:
+  # ignored inputs must not escape an exact-source checkout audit.
+  untracked_bytes="$(git_safe ls-files --others -z -- | /usr/bin/wc -c)" || {
+    echo "POLICY_FAILURE: unable to enumerate untracked files" >&2; exit 2;
+  }
+  [[ "$untracked_bytes" -eq 0 ]] || {
+    echo "POLICY_FAILURE: SHA-pinned audit has untracked or ignored files" >&2; exit 2;
+  }
 fi
 if [[ -e SOURCE_REF || -L SOURCE_REF ]] || git_safe ls-files --error-unmatch -- SOURCE_REF >/dev/null 2>&1; then
   [[ ! -L SOURCE_REF && -f SOURCE_REF ]] &&
