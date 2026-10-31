@@ -193,4 +193,47 @@ grep -Fq 'POLICY_FAILURE: SHA-pinned audit cannot redirect SOURCE_POLICY_ROOT' "
   echo "TEST_FAILURE: redirected SHA-pinned audit did not fail at root binding" >&2
   exit 1
 }
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=32\n'
+# A SHA-pinned production audit must prove its full HEAD tree, not merely
+# that a stale HEAD points at the expected commit. Verify staged removals,
+# staged additions, ignored extra inputs and executable-bit drift.
+pinned_repo="$test_repo/pinned-audit"
+mkdir -p "$pinned_repo/ci" "$pinned_repo/docs"
+cp "$root/ci/source-policy.sh" "$pinned_repo/ci/source-policy.sh"
+printf 'safe tracked bytes\n' > "$pinned_repo/docs/allowed.txt"
+git init -q "$pinned_repo"
+git -C "$pinned_repo" config user.name 'Policy pinned test'
+git -C "$pinned_repo" config user.email 'policy@example.invalid'
+git -C "$pinned_repo" add .
+git -C "$pinned_repo" commit -q -m 'exact pinned source'
+pinned_sha="$(git -C "$pinned_repo" rev-parse HEAD)"
+pinned_ok() {
+  EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" > /dev/null || {
+    echo 'TEST_FAILURE: clean SHA-pinned checkout was rejected' >&2; exit 1;
+  }
+}
+pinned_bad() {
+  if EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" >/dev/null 2>&1; then
+    echo 'TEST_FAILURE: modified SHA-pinned checkout was accepted' >&2; exit 1
+  fi
+}
+pinned_ok
+git -C "$pinned_repo" rm -q -- docs/allowed.txt
+pinned_bad
+git -C "$pinned_repo" reset --hard -q HEAD
+printf 'unreviewed safe file\n' > "$pinned_repo/docs/addition.txt"
+git -C "$pinned_repo" add docs/addition.txt
+pinned_bad
+git -C "$pinned_repo" reset --hard -q HEAD
+printf 'ignored\n' > "$pinned_repo/docs/ignored.txt"
+printf 'docs/ignored.txt\n' > "$pinned_repo/.git/info/exclude"
+pinned_bad
+rm "$pinned_repo/docs/ignored.txt"
+# core.filemode=false must not allow executable-bit changes to escape a
+# SHA-pinned checkout audit on a Linux CI worker.
+git -C "$pinned_repo" config core.filemode false
+chmod +x "$pinned_repo/docs/allowed.txt"
+pinned_bad
+chmod -x "$pinned_repo/docs/allowed.txt"
+git -C "$pinned_repo" config --unset core.filemode
+pinned_ok
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=36\n'
