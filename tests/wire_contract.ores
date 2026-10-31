@@ -1,7 +1,15 @@
 import module proxy_wire from "../src/proxy_wire";
+import module http_framing from "../src/http_framing";
 import module proxy_yaml from "../src/proxy_yaml";
 
 pub routine main(): int {
+  // Existing wire-contract runner also exercises shared strict framing.
+  if http_framing.parse(
+    "CONNECT api.example.test:443 HTTP/1.1\r\nHost: api.example.test:443\r\n\r\n", "forward").is_err() ||
+    http_framing.parse(
+    "CONNECT api.example.test:443 HTTP/1.1\r\nHost: api.example.test:443\r\ncontent-length: 0\r\n\r\n", "forward").is_ok(); then
+    stdio.println("FAIL bodyless HTTP/1.1 framed admission smoke"); return 1;
+  fi
   val String source = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test,api.example.test\n  connect_ports: 443\n";
   val parsed = proxy_yaml.parse(source, "forward");
   if parsed.is_err(); then stdio.println("FAIL fixture"); return 1; fi
