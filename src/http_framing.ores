@@ -34,6 +34,7 @@ define module http_framing as
 
     let int hosts = 0;
     let int connections = 0;
+    let Array<String> seen_names = new Array<String>();
     let String host = "";
     for (let i = 1; i < lines.size; i++) {
       val String line = lines.get(i);
