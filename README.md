@@ -17,7 +17,11 @@ A native, **pure control-plane** coordinator in `src/generation.ores` exercises 
 
 ## Native verification gate
 
-The exact-head native compiler/contract workflow is [`.github/workflows/native-contracts.yml`](.github/workflows/native-contracts.yml); runner prerequisites, executed commands and non-production release gates are in [`docs/NATIVE_VALIDATION.md`](docs/NATIVE_VALIDATION.md). A queued or absent workflow is **not** a passed compiler test. Network serving remains disabled.
+The legacy [`.github/workflows/native-contracts.yml`](.github/workflows/native-contracts.yml) is retired and intentionally fails closed. Trusted native execution is pending independently reviewed security PR #19 and protected-main runner governance; prerequisites and non-production release gates are in [`docs/NATIVE_VALIDATION.md`](docs/NATIVE_VALIDATION.md). A queued or absent workflow is **not** a passed compiler test. Network serving remains disabled.
+
+## Forward proxy and load-balancer boundary
+
+Forward CONNECT tunneling is an egress-security feature, not a reverse upstream scheduler. Load-balanced egress gateway pools may be added only after CONNECT authentication, destination IP admission/pinning, TLS policy, quotas and actor-owned duplex stream transport are proven. Never rotate a denied destination into a newly eligible route or weaken domain/IP checks to achieve failover. The reverse-proxy repository has a separate experimental YAML backend-pool selection oracle; it does not enable any forward-proxy data plane.
 
 ## Native Oreslang CONNECT and HTTP header contracts
 
