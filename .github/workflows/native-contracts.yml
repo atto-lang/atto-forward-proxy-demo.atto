@@ -54,13 +54,10 @@ jobs:
         run: oreslang tests/generation_contract.ores
       - name: Execute independent middleware snapshot contract
         run: oreslang tests/middleware_generation_contract.ores
-      - name: Compile and execute six native Oreslang harness contracts
+      - name: Exact-head pinned compiler six-case Oreslang suite
         shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
-          oreslang --check tests/native-harness-extended.ores
-          oreslang tests/native-harness-extended.ores > "$RUNNER_TEMP/proxy-harness.out"
-          test "$(grep -c '^ORES_TEST|PASS|forward-proxy/policy/' "$RUNNER_TEMP/proxy-harness.out")" -eq 6
-          test "$(grep -c '^ORES_TEST|SUMMARY|' "$RUNNER_TEMP/proxy-harness.out")" -eq 1
-          grep -Fxq 'ORES_TEST|SUMMARY|total=6|passed=6|failed=0|skipped=0|filtered=0' "$RUNNER_TEMP/proxy-harness.out"
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ORESLANG_BIN: ${{ vars.ORESLANG_GRAAL_BIN }}
+          ORESLANG_COMPILER_SHA256: ${{ vars.ORESLANG_GRAAL_SHA256 }}
+        run: bash ci/verify-native-harness.sh
