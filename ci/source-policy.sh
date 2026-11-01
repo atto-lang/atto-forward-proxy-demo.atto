@@ -56,6 +56,12 @@ if [[ -e SOURCE_REF || -L SOURCE_REF ]] || git_safe ls-files --error-unmatch -- 
 fi
 mode="${SOURCE_POLICY_MODE:-strict}"
 [[ "$mode" == strict || "$mode" == rest-legacy ]] || { echo "POLICY_FAILURE: unknown mode" >&2; exit 2; }
+# A SHA-pinned production audit must not enable migration-only Python exceptions.
+# The exact-head workflow must always apply strict source admission.
+if [[ -n "${EXPECTED_DEMO_SHA:-}" && "$mode" != strict ]]; then
+  echo 'POLICY_FAILURE: SHA-pinned source policy requires strict mode' >&2
+  exit 2
+fi
 # Do not mask Git failures behind process substitution: both inventories must
 # be produced successfully from the actual checkout index, and be nonempty.
 stage_list="$(/usr/bin/mktemp)" || exit 2
