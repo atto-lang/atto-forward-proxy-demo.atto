@@ -12,13 +12,24 @@ printf '00_abc\n' > "$test_repo/src/hello.ores"
 printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
 printf '\n' >> "$test_repo/SOURCE_REF"
 git -C "$test_repo" add .
+# These are *executed assertions*, not a fixed success footer.
+scenario_count=0
+count_pass() { scenario_count=$((scenario_count + 1)); }
 check_ok() {
   SOURCE_POLICY_ROOT="$test_repo" SOURCE_POLICY_MODE="${1:-strict}" bash "$root/ci/source-policy.sh" > /dev/null
+  count_pass
 }
 check_bad() {
+  local status=0
   if SOURCE_POLICY_ROOT="$test_repo" SOURCE_POLICY_MODE="${1:-strict}" bash "$root/ci/source-policy.sh" > /dev/null 2>&1; then
     echo "TEST_FAILURE: expected source policy rejection" >&2; exit 1
+  else
+    status=$?
   fi
+  [[ "$status" -eq 2 ]] || {
+    printf 'TEST_FAILURE: source policy rejected with unexpected exit=%s (wanted 2)\n' "$status" >&2; exit 1
+  }
+  count_pass
 }
 check_ok
 mkdir -p "$test_repo/nested space"
@@ -199,6 +210,7 @@ grep -Fq 'POLICY_FAILURE: SHA-pinned audit cannot redirect SOURCE_POLICY_ROOT' "
   echo "TEST_FAILURE: redirected SHA-pinned audit did not fail at root binding" >&2
   exit 1
 }
+count_pass
 # A SHA-pinned production audit must prove its full HEAD tree, not merely
 # that a stale HEAD points at the expected commit. Verify staged removals,
 # staged additions, ignored extra inputs and executable-bit drift.
@@ -216,11 +228,19 @@ pinned_ok() {
   EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" > /dev/null || {
     echo 'TEST_FAILURE: clean SHA-pinned checkout was rejected' >&2; exit 1;
   }
+  count_pass
 }
 pinned_bad() {
+  local status=0
   if EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" >/dev/null 2>&1; then
     echo 'TEST_FAILURE: modified SHA-pinned checkout was accepted' >&2; exit 1
+  else
+    status=$?
   fi
+  [[ "$status" -eq 2 ]] || {
+    printf 'TEST_FAILURE: pinned source policy unexpectedly exited %s (wanted 2)\n' "$status" >&2; exit 1
+  }
+  count_pass
 }
 pinned_ok
 git -C "$pinned_repo" rm -q -- docs/allowed.txt
@@ -242,4 +262,10 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=37\n'
+# 14 normal accepts + 29 normal rejects (including expanded for loops)
+# + 1 redirected checkout rejection + 2 pinned accepts + 4 pinned rejects.
+[[ "$scenario_count" -eq 50 ]] || {
+  printf 'TEST_FAILURE: expected 50 executed assertions, got %s\n' "$scenario_count" >&2
+  exit 1
+}
+printf 'SOURCE_POLICY_REGRESSION_CASES_PASS scenarios=%s\n' "$scenario_count"
