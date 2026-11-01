@@ -262,10 +262,11 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-# 14 normal accepts + 29 normal rejects (including expanded for loops)
-# + 1 redirected checkout rejection + 2 pinned accepts + 4 pinned rejects.
-[[ "$scenario_count" -eq 50 ]] || {
-  printf 'TEST_FAILURE: expected 50 executed assertions, got %s\n' "$scenario_count" >&2
+# 14 normal accepts + 30 normal rejects (including 4 expanded loops
+# and GIT_INDEX_FILE-poisoned invocation) + 1 redirected-checkout rejection
+# + 2 pinned accepts + 4 pinned rejects = 51 executed assertions.
+[[ "$scenario_count" -eq 51 ]] || {
+  printf 'TEST_FAILURE: expected 51 executed assertions, got %s\n' "$scenario_count" >&2
   exit 1
 }
 printf 'SOURCE_POLICY_REGRESSION_CASES_PASS scenarios=%s\n' "$scenario_count"
