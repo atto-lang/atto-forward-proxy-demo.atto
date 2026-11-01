@@ -15,9 +15,13 @@ Exact-head compiler/contract execution is not yet available; no passing PR CI ch
 
 A native, **pure control-plane** coordinator in `src/generation.ores` exercises prepare/publish/abort fencing and snapshot epochs (see `tests/generation_contract.ores`). This does not publish a listener/actor generation or serve requests.
 
+## Forward CONNECT capacity contract (pure Oreslang)
+
+`src/egress_lease.ores` now composes the strict `CONNECT` authority allowlist with a bounded, generation-fenced `slot_pool` lease. `tests/egress_lease_contract.ores` exercises denied destinations, quota exhaustion, stale generations and delayed slot retirement while an I/O claim remains pinned. This adds **no outbound socket capability** and cannot replace authentication, full DNS/IP SSRF admission or actual nonblocking duplex relay. The forward proxy does **not** load-balance arbitrary client CONNECT destinations. Reverse traffic balancing uses separately declared `upstreams:` pools in the reverse proxy; optional future parent-proxy pools will need their own authenticated trust boundary.
+
 ## Native verification gate
 
-The exact-head native compiler/contract workflow is [`.github/workflows/native-contracts.yml`](.github/workflows/native-contracts.yml); runner prerequisites, executed commands and non-production release gates are in [`docs/NATIVE_VALIDATION.md`](docs/NATIVE_VALIDATION.md). A queued or absent workflow is **not** a passed compiler test. Network serving remains disabled.
+The legacy native workflow [`.github/workflows/native-contracts.yml`](.github/workflows/native-contracts.yml) is intentionally disabled on this audit-derived branch for PR-head self-hosted runner safety; runner prerequisites, executed commands and non-production release gates are in [`docs/NATIVE_VALIDATION.md`](docs/NATIVE_VALIDATION.md). A queued or absent workflow is **not** a passed compiler test. Network serving remains disabled.
 
 ## Native Oreslang CONNECT and HTTP header contracts
 
