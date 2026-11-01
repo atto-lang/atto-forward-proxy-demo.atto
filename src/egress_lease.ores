@@ -1,0 +1,55 @@
+// Pure forward CONNECT quota and generation-fenced slot lease.
+// This does NOT authorize outbound DNS resolution, TLS, or any socket dial.
+// The real transport must pin all resolved IPs, authenticate the caller,
+// reject private/metadata targets and own a bounded nonblocking duplex stream.
+import module proxy_yaml from "./proxy_yaml";
+import module route_policy from "./route_policy";
+import module slot_pool from "./slot_pool";
+
+define module egress_lease as
+  pub define class Ticket as
+    pub val int epoch;
+    pub val String authority;
+    pub val slot_pool.Handle handle;
+  end
+
+  pub define class Admitted as
+    pub val slot_pool.Pool state;
+    pub val Ticket ticket;
+  end
+
+  pub fnc admit(borrow proxy_yaml.Config config, slot_pool.Pool pool,
+                int epoch, String method, String authority):
+      Result<Admitted, String> {
+    if epoch <= 0 || !route_policy.configured_connect(rt borrow config,
+      method, authority); then
+      return Err("CONNECT rejected by strict configured authority policy");
+    fi
+    val reserved = pool.admit(epoch);
+    if reserved.is_err(); then
+      return Err("forward egress slot limit exceeded");
+    fi
+    val granted = reserved.unwrap();
+    return Ok(new Admitted(granted.state,
+      new Ticket(epoch, authority, granted.handle)));
+  }
+
+  pub fnc pin(slot_pool.Pool pool, borrow Ticket ticket,
+              int expected_epoch): Result<slot_pool.Pinned, String> {
+    if expected_epoch <= 0 || expected_epoch != ticket.epoch; then
+      return Err("stale CONNECT lease epoch");
+    fi
+    return pool.pin(rt borrow ticket.handle);
+  }
+
+  // A pinned lease may remain RETIRING until its I/O claim is settled.
+  // Do not release the slot back to the pool until half-close/cancellation
+  // finishes; duplicate and cross-slot receipts must fail closed.
+  pub fnc close(slot_pool.Pool pool, borrow Ticket ticket,
+                int expected_epoch): Result<slot_pool.Pool, String> {
+    if expected_epoch <= 0 || expected_epoch != ticket.epoch; then
+      return Err("stale CONNECT close epoch");
+    fi
+    return pool.close(rt borrow ticket.handle);
+  }
+end
