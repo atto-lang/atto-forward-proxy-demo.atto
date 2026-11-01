@@ -1,0 +1,60 @@
+// Pure forward CONNECT, quota, epoch and stale claim contracts.
+// Never opens a socket or asserts DNS/IP/TLS transport authorization.
+import module proxy_yaml from "../src/proxy_yaml";
+import module slot_pool from "../src/slot_pool";
+import module egress_lease from "../src/egress_lease";
+
+pub routine main(): int {
+  val String yaml = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\n";
+  val parsed = proxy_yaml.parse(yaml, "forward");
+  if parsed.is_err(); then stdio.println("FAIL forward config"); return 1; fi
+  val config = parsed.unwrap();
+  if egress_lease.admit(rt borrow config, slot_pool.create(1).unwrap(), 4,
+      "GET", "api.example.test:443").is_ok() ||
+     egress_lease.admit(rt borrow config, slot_pool.create(1).unwrap(), 4,
+      "CONNECT", "api.example.test:80").is_ok() ||
+     egress_lease.admit(rt borrow config, slot_pool.create(1).unwrap(), 4,
+      "CONNECT", "evil.test:443").is_ok() ||
+     egress_lease.admit(rt borrow config, slot_pool.create(1).unwrap(), 0,
+      "CONNECT", "api.example.test:443").is_ok(); then
+    stdio.println("FAIL bypassable CONNECT admission"); return 1;
+  fi
+
+  val admitted = egress_lease.admit(rt borrow config,
+    slot_pool.create(1).unwrap(), 4,
+    "CONNECT", "api.example.test:443");
+  if admitted.is_err(); then stdio.println("FAIL allowed CONNECT"); return 1; fi
+  val a = admitted.unwrap();
+  if a.ticket.epoch != 4 ||
+     a.ticket.authority != "api.example.test:443" ||
+     a.state.live_slots() != 1; then
+    stdio.println("FAIL generation-pinned CONNECT reservation"); return 1;
+  fi
+  if egress_lease.admit(rt borrow config,
+      a.state, 4, "CONNECT", "api.example.test:443").is_ok(); then
+    stdio.println("FAIL per-forward slot bound"); return 1;
+  fi
+
+  val another = egress_lease.admit(rt borrow config,
+    slot_pool.create(1).unwrap(), 4, "CONNECT", "api.example.test:443").unwrap();
+  if egress_lease.pin(another.state, rt borrow another.ticket, 5).is_ok(); then
+    stdio.println("FAIL cross-epoch pin"); return 1;
+  fi
+  val allowed = egress_lease.admit(rt borrow config,
+    slot_pool.create(1).unwrap(), 4, "CONNECT", "api.example.test:443").unwrap();
+  val pending = egress_lease.pin(allowed.state, rt borrow allowed.ticket, 4);
+  if pending.is_err(); then stdio.println("FAIL valid pin"); return 1; fi
+  val pinned = pending.unwrap();
+  val retired = egress_lease.close(pinned.state, rt borrow allowed.ticket, 4);
+  if retired.is_err(); then stdio.println("FAIL retire"); return 1; fi
+  val closing = retired.unwrap();
+  if closing.quiescent(); then
+    stdio.println("FAIL retiring slot reused before I/O settle"); return 1;
+  fi
+  val settled = closing.settle(rt borrow pinned.receipt);
+  if settled.is_err() || !settled.unwrap().quiescent(); then
+    stdio.println("FAIL final receipt settle"); return 1;
+  fi
+  stdio.println("PASS pure CONNECT quota, generation and retire contracts");
+  return 0;
+}
