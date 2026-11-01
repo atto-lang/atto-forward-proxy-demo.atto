@@ -1,0 +1,39 @@
+// Pure Oreslang proxy control-plane spelling checks (NOT live socket evidence).
+import class TestCase, TestSuite, TestOptions, RunSummary, TestOutcome from '../vendor/oreslang/testing';
+import fnc expect_true, expect_false, run_suite, require_success from '../vendor/oreslang/testing';
+import module proxy_yaml from '../src/proxy_yaml';
+
+fnc subdomain_accepted(): TestOutcome {
+  return expect_true(proxy_yaml.valid_domain("edge.example.test"), "well-formed subdomain");
+}
+fnc doubled_dot_rejected(): TestOutcome {
+  return expect_false(proxy_yaml.valid_domain("edge..example.test"), "empty DNS label must fail");
+}
+fnc header_name_accepted(): TestOutcome {
+  return expect_true(proxy_yaml.valid_header_name("x-request-id"), "canonical lower-case header");
+}
+fnc uppercase_header_rejected(): TestOutcome {
+  return expect_false(proxy_yaml.valid_header_name("X-Request-Id"), "noncanonical uppercase header");
+}
+fnc userinfo_origin_rejected(): TestOutcome {
+  return expect_false(proxy_yaml.valid_upstream_origin("https://alice:secret@example.test"),
+    "origin with embedded credentials must fail");
+}
+fnc path_origin_rejected(): TestOutcome {
+  return expect_false(proxy_yaml.valid_upstream_origin("https://example.test/private"),
+    "path-bearing upstream origin must fail");
+}
+pub routine main(): void {
+  val TestSuite suite = new TestSuite("forward-proxy/policy", arr[
+    new TestCase("domain/subdomain-allowed", subdomain_accepted, false, ""),
+    new TestCase("domain/empty-label-denied", doubled_dot_rejected, false, ""),
+    new TestCase("header/canonical-allowed", header_name_accepted, false, ""),
+    new TestCase("header/uppercase-denied", uppercase_header_rejected, false, ""),
+    new TestCase("origin/userinfo-denied", userinfo_origin_rejected, false, ""),
+    new TestCase("origin/path-denied", path_origin_rejected, false, "")
+  ]);
+  val TestOptions options = new TestOptions("", false, true);
+  val RunSummary summary = run_suite(suite, options);
+  require_success(summary);
+  return;
+}
