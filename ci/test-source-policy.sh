@@ -223,6 +223,13 @@ pinned_bad() {
   fi
 }
 pinned_ok
+# Regression: migration-only Python allowlisting must not be accepted by an
+# otherwise clean, exact-head production audit.
+if EXPECTED_DEMO_SHA="$pinned_sha" SOURCE_POLICY_MODE=rest-legacy \
+  bash "$pinned_repo/ci/source-policy.sh" > /dev/null 2>&1; then
+  echo 'TEST_FAILURE: SHA-pinned audit accepted rest-legacy source policy' >&2
+  exit 1
+fi
 git -C "$pinned_repo" rm -q -- docs/allowed.txt
 pinned_bad
 git -C "$pinned_repo" reset --hard -q HEAD
@@ -242,4 +249,4 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=37\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=38\n'
