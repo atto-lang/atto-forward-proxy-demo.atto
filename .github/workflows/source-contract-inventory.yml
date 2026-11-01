@@ -60,7 +60,7 @@ jobs:
             esac
           done < <(git ls-files -z -- src tests)
           test "$checked" -ge 24
-          printf 'ORESLANG_SOURCE_INVENTORY_ONLY files=%s native=NOT_EXECUTED\\n' "$checked"
+          printf 'ORESLANG_SOURCE_INVENTORY_ONLY files=%s native=NOT_EXECUTED\n' "$checked"
           echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=26'
       - name: Run adversarial source-policy regressions
         shell: bash
