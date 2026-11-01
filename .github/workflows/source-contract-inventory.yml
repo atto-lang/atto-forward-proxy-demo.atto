@@ -45,6 +45,17 @@ jobs:
           done
           test -z "$(find src tests config -type l -print -quit)"
           echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=9'
+      - name: Host-only adversarial ORES_TEST receipt checks (not guest evidence)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in ci/native-harness-cases.txt ci/verify-native-harness.sh ci/verify-native-harness-receipts.sh ci/test-native-harness-receipts.sh; do
+            test -f "$file"
+            test ! -L "$file"
+            git ls-files --error-unmatch -- "$file" >/dev/null
+          done
+          bash -n ci/verify-native-harness.sh ci/verify-native-harness-receipts.sh ci/test-native-harness-receipts.sh
+          bash ci/test-native-harness-receipts.sh
       - name: Clearly separate source inventory from runtime verdict
         shell: bash
         run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
