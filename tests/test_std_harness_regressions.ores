@@ -6,9 +6,14 @@ fnc route_prefix_requires_segment_boundary(): TestOutcome {
     && !route_policy.prefix_match("/api", "/apiv2"),
     "route prefix cannot match an unrelated path segment");
 }
+fnc double_slash_route_rejected(): TestOutcome {
+  return expect_false(route_policy.prefix_match("/", "//admin"),
+    "double-leading slash paths must not inherit root route authority");
+}
 pub routine main(): void {
   val TestSuite suite = new TestSuite("forward-proxy", arr[
-    new TestCase("route_prefix_requires_segment_boundary", route_prefix_requires_segment_boundary, false, "")
+    new TestCase("route_prefix_requires_segment_boundary", route_prefix_requires_segment_boundary, false, ""),
+    new TestCase("double_slash_route_rejected", double_slash_route_rejected, false, "")
   ]);
   val TestOptions options = new TestOptions("", false, true);
   val RunSummary summary = run_suite(rt borrow suite, rt borrow options);
