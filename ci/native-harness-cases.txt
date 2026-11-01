@@ -1,0 +1,6 @@
+forward-proxy/policy/domain/subdomain-allowed
+forward-proxy/policy/domain/empty-label-denied
+forward-proxy/policy/header/canonical-allowed
+forward-proxy/policy/header/uppercase-denied
+forward-proxy/policy/origin/userinfo-denied
+forward-proxy/policy/origin/path-denied
