@@ -1,42 +1,42 @@
 # Native compiler / contract validation
 
-The proposed network data plane is **not** implemented. This document describes the actual executable verification gate without using a replacement parser or mocked Oreslang compiler.
+The proposed network data plane is **not** implemented. This document describes the actual executable verification gate without using a replacement parser or mocked AttoLang compiler.
 
 ## CI
 
-`.github/workflows/native-contracts.yml` checks all six Oreslang source modules and runs four native Oreslang test entrypoints:
+`.github/workflows/native-contracts.yml` checks all six AttoLang source modules and runs four native AttoLang test entrypoints:
 
-- `tests/path_admission_contract.ores`: canonical absolute POSIX YAML path admission, traversal/symlink-shaped lexical rejection and control characters (not race-free access).
-- `tests/yaml_policy_contract.ores`: strict YAML admission, malicious scalar/comment inputs, domain validation, and complexity bounds.
-- `tests/generation_contract.ores`: pure prepare/publish/abort semantics, stale epoch rejection, prior-snapshot identity.
-- `tests/middleware_generation_contract.ores`: old/new policy isolation and unsupported middleware rejection.
+- `tests/path_admission_contract.atto`: canonical absolute POSIX YAML path admission, traversal/symlink-shaped lexical rejection and control characters (not race-free access).
+- `tests/yaml_policy_contract.atto`: strict YAML admission, malicious scalar/comment inputs, domain validation, and complexity bounds.
+- `tests/generation_contract.atto`: pure prepare/publish/abort semantics, stale epoch rejection, prior-snapshot identity.
+- `tests/middleware_generation_contract.atto`: old/new policy isolation and unsupported middleware rejection.
 
 The workflow deliberately requires the self-hosted `oreslang-jdk25` runner label, `actions/setup-java` JDK 25, and an **approved and installed** `oreslang` executable in `PATH`. It uses only `contents: read`, does not check out the private compiler repository, and rejects fork-origin PR execution on this runner. The runner should be an ephemeral, unprivileged, dedicated validation environment with no deployment credentials and no untrusted co-tenants.
 
-A **queued** workflow run is not a passing test. If there is no runner with this label, no guest code has executed. Before marking the PR ready, capture a green run on the exact PR head with actual individual steps, the Oreslang binary provenance, and the JDK 25 version.
+A **queued** workflow run is not a passing test. If there is no runner with this label, no guest code has executed. Before marking the PR ready, capture a green run on the exact PR head with actual individual steps, the AttoLang binary provenance, and the JDK 25 version.
 
 ## Local checks on an authorized runtime
 
 With JDK 25 and the real Java/Graal `oreslang` launcher installed:
 
 ```text
-oreslang --check src/main.ores
-oreslang --check src/config_path.ores
-oreslang --check src/proxy_yaml.ores
-oreslang --check src/route_policy.ores
-oreslang --check src/middleware_policy.ores
-oreslang --check src/generation.ores
-oreslang --check tests/path_admission_contract.ores
-oreslang --check tests/yaml_policy_contract.ores
-oreslang --check tests/generation_contract.ores
-oreslang --check tests/middleware_generation_contract.ores
-oreslang tests/path_admission_contract.ores
-oreslang tests/yaml_policy_contract.ores
-oreslang tests/generation_contract.ores
-oreslang tests/middleware_generation_contract.ores
+oreslang --check src/main.atto
+oreslang --check src/config_path.atto
+oreslang --check src/proxy_yaml.atto
+oreslang --check src/route_policy.atto
+oreslang --check src/middleware_policy.atto
+oreslang --check src/generation.atto
+oreslang --check tests/path_admission_contract.atto
+oreslang --check tests/yaml_policy_contract.atto
+oreslang --check tests/generation_contract.atto
+oreslang --check tests/middleware_generation_contract.atto
+oreslang tests/path_admission_contract.atto
+oreslang tests/yaml_policy_contract.atto
+oreslang tests/generation_contract.atto
+oreslang tests/middleware_generation_contract.atto
 ```
 
-Do **not** silently skip missing executables or replace commands with grep-only/mocked checks. `src/main.ores` intentionally exits with status 78 on valid configuration because no listening/forwarding data plane is certified; a successful parsing check cannot stand in for a healthy proxy.
+Do **not** silently skip missing executables or replace commands with grep-only/mocked checks. `src/main.atto` intentionally exits with status 78 on valid configuration because no listening/forwarding data plane is certified; a successful parsing check cannot stand in for a healthy proxy.
 
 ## Gates after source compilation
 
@@ -51,12 +51,12 @@ The `config_path` module enforces a canonical absolute POSIX spelling for `ores_
 
 ## Reviewed verification inventory
 
-CI does not discover-and-trust new Oreslang files implicitly. Two committed manifests make the verification surface reviewable:
+CI does not discover-and-trust new AttoLang files implicitly. Two committed manifests make the verification surface reviewable:
 
-- `ci/oreslang-files.txt` is the complete sorted inventory of `src/**/*.ores` and `tests/**/*.ores` that must be compiler-checked.
+- `ci/oreslang-files.txt` is the complete sorted inventory of `src/**/*.atto` and `tests/**/*.atto` that must be compiler-checked.
 - `ci/pure-contracts.txt` is the complete sorted inventory of standalone `tests/*_contract.ores` programs that must execute successfully.
 
-The workflow first regenerates both inventories from the checked-out tree and diffs them against the committed manifests. A source or pure contract added without updating the manifest fails before compilation. A manifest entry whose file is missing fails the same way. Only then does the runner compiler-check every reviewed Oreslang file and execute every reviewed pure contract.
+The workflow first regenerates both inventories from the checked-out tree and diffs them against the committed manifests. A source or pure contract added without updating the manifest fails before compilation. A manifest entry whose file is missing fails the same way. Only then does the runner compiler-check every reviewed AttoLang file and execute every reviewed pure contract.
 
 Integration fixtures that require a separately running listener or another process are compiler-checked through the complete source inventory but are not falsely treated as standalone pure tests. They need their own orchestration gate before any transport claim is promoted.
 
@@ -67,4 +67,4 @@ This private repository intentionally keeps inventory verification and native ex
 
 ## Pinned DNS pre-dial reference contract
 
-`tests/network_admission_contract.ores` checks generation and request-slot identity, rate/circuit denial and the trusted resolver's pinned public-address classification. Its returned `ForwardPermit` is a pure descriptor, never network dial authority; real resolver and transport tests are still required before release.
+`tests/network_admission_contract.atto` checks generation and request-slot identity, rate/circuit denial and the trusted resolver's pinned public-address classification. Its returned `ForwardPermit` is a pure descriptor, never network dial authority; real resolver and transport tests are still required before release.

@@ -1,10 +1,10 @@
 # Native proxy ingress and wire admission: October 22, 2026
 
-This branch adds Oreslang-only strict request-target and upstream-origin checks, plus native contract vectors. These are **not full HTTP parsers**, not TLS implementations, and do not confer outbound network authority.
+This branch adds AttoLang-only strict request-target and upstream-origin checks, plus native contract vectors. These are **not full HTTP parsers**, not TLS implementations, and do not confer outbound network authority.
 
 ## Exact runtime status
 
-`src/proxy_wire.ores` parses the strict `CONNECT dns-name:443 HTTP/1.1` request line and exact-match Host metadata. It can compare the domain to the configured allow_domains policy, but this is **not authentication, DNS/IP pinning, TCP tunneling or a listener**. No forward proxy network service is exposed because the current host HTTP server rejects CONNECT and absolute-form requests.
+`src/proxy_wire.atto` parses the strict `CONNECT dns-name:443 HTTP/1.1` request line and exact-match Host metadata. It can compare the domain to the configured allow_domains policy, but this is **not authentication, DNS/IP pinning, TCP tunneling or a listener**. No forward proxy network service is exposed because the current host HTTP server rejects CONNECT and absolute-form requests.
 
 ## Invariants for the eventual network adapter
 
@@ -19,4 +19,4 @@ This branch adds Oreslang-only strict request-target and upstream-origin checks,
 
 ## Evidence required
 
-Run `tests/wire_contract.ores` and existing tests as genuine Oreslang programs with JDK25 Java/Graal interpreter and native-image AOT/hybrid. Run same accepted/rejected vectors on LLVM after missing host HTTP/CONNECT capabilities are added. Capture exact Git tree SHA and executed steps. Then run real loopback integration checks for 400/403/404/501, pooled actor completion, cancellation, admission saturation, graceful shutdown and actor generation isolation. No execution evidence was available when this source candidate was prepared.
+Run `tests/wire_contract.atto` and existing tests as genuine AttoLang programs with JDK25 Java/Graal interpreter and native-image AOT/hybrid. Run same accepted/rejected vectors on LLVM after missing host HTTP/CONNECT capabilities are added. Capture exact Git tree SHA and executed steps. Then run real loopback integration checks for 400/403/404/501, pooled actor completion, cancellation, admission saturation, graceful shutdown and actor generation isolation. No execution evidence was available when this source candidate was prepared.
