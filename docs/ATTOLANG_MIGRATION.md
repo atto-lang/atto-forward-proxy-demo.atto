@@ -12,6 +12,6 @@ The forward CONNECT policy remains data-only planning and must preserve `socket_
 
 ## Gate
 
-`ci/attolang_source_policy.sh` rejects tracked or untracked legacy `.ores` files, symlinked/misplaced `.atto` files, executable-bit drift, writable-mode drift and working-tree byte drift. The source-free harness exercises thirteen cases.
+`ci/attolang_source_policy.sh` rejects tracked or untracked legacy `.ores` files, symlinked/misplaced `.atto` files, executable-bit drift, writable-mode drift and working-tree byte drift. The source-free harness exercises fourteen cases.
 
 This is source/contract migration evidence only, not native AttoLang execution.
