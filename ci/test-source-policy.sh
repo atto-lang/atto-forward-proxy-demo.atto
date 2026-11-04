@@ -250,6 +250,20 @@ chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
 
+# Pinned HEAD must reject an oversized modified tracked file through the
+# byte preflight, NOT `git diff HEAD` (which could hash unbounded bytes).
+truncate -s 8388609 "$pinned_repo/docs/allowed.txt"
+if pinned_budget_log="$(EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" 2>&1)"; then
+  echo 'TEST_FAILURE: pinned oversized tracked file was accepted' >&2
+  exit 1
+fi
+grep -Fq 'POLICY_FAILURE: tracked file exceeds 8MiB budget:' <<<"$pinned_budget_log" || {
+  echo "TEST_FAILURE: pinned oversized file rejected at wrong gate: $pinned_budget_log" >&2
+  exit 1
+}
+git -C "$pinned_repo" reset --hard -q HEAD
+pinned_ok
+
 # The tracked-file verifier must reject huge inputs BEFORE hashing them.
 # A separate fixture prevents the earlier deliberately dirty index and
 # SOURCE_REF-negative cases from masking budget regressions.
