@@ -70,9 +70,21 @@ trap '/usr/bin/rm -f -- "$stage_list" "$tracked_list"' EXIT
 git_safe ls-files --stage -z > "$stage_list" || { echo "POLICY_FAILURE: failed staged inventory" >&2; exit 2; }
 git_safe ls-files -z --cached > "$tracked_list" || { echo "POLICY_FAILURE: failed tracked inventory" >&2; exit 2; }
 [[ -s "$stage_list" && -s "$tracked_list" ]] || { echo "POLICY_FAILURE: empty tracked index" >&2; exit 2; }
+# Refuse oversized source inventories before hashing every checkout blob.
+# This policy is for a small proxy-demo checkout, not arbitrary binary assets.
+# The two budgets bound sequential validation work and accidental huge fixtures.
+# A concurrent untrusted writer still requires an immutable/isolated checkout.
+stage_count=0
+total_bytes=0
+file_byte_limit=8388608    # 8 MiB per tracked file
+tree_byte_limit=33554432   # 32 MiB across tracked regular files
 # Reject all tracked symlinks, gitlinks, and unmerged index entries.
 # Metadata is the Git index; filename extensions alone are insufficient.
 while IFS= read -r -d '' entry; do
+  stage_count=$((stage_count + 1))
+  (( stage_count <= 50000 )) || {
+    echo 'POLICY_FAILURE: staged file count budget exceeded' >&2; exit 2;
+  }
   [[ "$entry" == *$'\t'* ]] || {
     echo 'POLICY_FAILURE: malformed index entry' >&2; exit 2;
   }
@@ -92,6 +104,21 @@ while IFS= read -r -d '' entry; do
   # outside the audited checkout, even when its raw blob matches the index.
   [[ "$(/usr/bin/realpath -e -- "$path")" == "$root/$path" ]] || {
     echo "POLICY_FAILURE: tracked file escapes checkout through parent path: $path" >&2; exit 2;
+  }
+  # Validate tracked source byte budgets BEFORE hashing potentially huge
+  # blobs, and reject malformed metadata instead of trusting shell arithmetic.
+  file_bytes="$(/usr/bin/stat -c %s -- "$path")" || {
+    echo "POLICY_FAILURE: could not stat tracked file: $path" >&2; exit 2;
+  }
+  [[ "$file_bytes" =~ ^[0-9]+$ ]] || {
+    echo "POLICY_FAILURE: invalid tracked size: $path" >&2; exit 2;
+  }
+  (( file_bytes <= file_byte_limit )) || {
+    echo "POLICY_FAILURE: tracked file exceeds 8MiB budget: $path" >&2; exit 2;
+  }
+  total_bytes=$((total_bytes + file_bytes))
+  (( total_bytes <= tree_byte_limit )) || {
+    echo "POLICY_FAILURE: tracked tree exceeds 32MiB budget" >&2; exit 2;
   }
   # A staged blob may differ from a harmless-looking worktree file. Verify
   # the exact raw bytes that Git would commit, without invoking clean filters.
