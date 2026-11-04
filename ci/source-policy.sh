@@ -24,20 +24,11 @@ if [[ -n "${EXPECTED_DEMO_SHA:-}" ]]; then
   # A pinned HEAD alone does not authenticate its index or worktree.
   # A deleted HEAD path, staged addition, chmod, or ignored extra source must
   # never be able to disappear from the exact-source inventory.
-  git_safe diff --no-ext-diff --cached --quiet HEAD -- || {
-    echo "POLICY_FAILURE: SHA-pinned audit has staged changes against HEAD" >&2; exit 2;
-  }
-  git_safe diff --no-ext-diff --quiet HEAD -- || {
-    echo "POLICY_FAILURE: SHA-pinned audit has modified tracked files" >&2; exit 2;
-  }
-  # Without --exclude-standard, ls-files --others includes ignored paths:
-  # ignored inputs must not escape an exact-source checkout audit.
-  untracked_bytes="$(git_safe ls-files --others -z -- | /usr/bin/wc -c)" || {
-    echo "POLICY_FAILURE: unable to enumerate untracked files" >&2; exit 2;
-  }
-  [[ "$untracked_bytes" -eq 0 ]] || {
-    echo "POLICY_FAILURE: SHA-pinned audit has untracked or ignored files" >&2; exit 2;
-  }
+  # Do not run Git diff on unbounded dirty files before the byte-budget
+  # preflight below: diff may hash their entire contents. Postpone exact-tree
+  # comparison and untracked/ignored inspection until tracked cells are size
+  # checked, hash-verified, and source-policy admitted.
+
 fi
 if [[ -e SOURCE_REF || -L SOURCE_REF ]] || git_safe ls-files --error-unmatch -- SOURCE_REF >/dev/null 2>&1; then
   [[ ! -L SOURCE_REF && -f SOURCE_REF ]] &&
@@ -49,6 +40,14 @@ if [[ -e SOURCE_REF || -L SOURCE_REF ]] || git_safe ls-files --error-unmatch -- 
   # inventory even when its bytes are a valid 40-hex provenance token.
   [[ "$(git_safe ls-files --stage -- SOURCE_REF)" == "100644 "* ]] || {
     echo 'POLICY_FAILURE: SOURCE_REF must be a tracked 100644 regular blob' >&2; exit 2;
+  }
+  # A SHA-shaped provenance file is exactly 41 bytes; reject oversized
+  # worktree input with stat BEFORE wc/grep can scan arbitrary data.
+  source_ref_bytes="$(/usr/bin/stat -c %s -- SOURCE_REF)" || {
+    echo "POLICY_FAILURE: cannot stat SOURCE_REF" >&2; exit 2;
+  }
+  [[ "$source_ref_bytes" == 41 ]] || {
+    echo "POLICY_FAILURE: SOURCE_REF requires exactly 40 lowercase hex characters and newline" >&2; exit 2;
   }
   [[ "$(wc -l < SOURCE_REF)" -eq 1 ]] && grep -Eq '^[a-f0-9]{40}$' SOURCE_REF && [[ "$(wc -c < SOURCE_REF)" -eq 41 ]] || {
     echo "POLICY_FAILURE: SOURCE_REF requires exactly 40 lowercase hex characters and newline" >&2; exit 2;
@@ -70,9 +69,21 @@ trap '/usr/bin/rm -f -- "$stage_list" "$tracked_list"' EXIT
 git_safe ls-files --stage -z > "$stage_list" || { echo "POLICY_FAILURE: failed staged inventory" >&2; exit 2; }
 git_safe ls-files -z --cached > "$tracked_list" || { echo "POLICY_FAILURE: failed tracked inventory" >&2; exit 2; }
 [[ -s "$stage_list" && -s "$tracked_list" ]] || { echo "POLICY_FAILURE: empty tracked index" >&2; exit 2; }
+# Refuse oversized source inventories before hashing every checkout blob.
+# This policy is for a small proxy-demo checkout, not arbitrary binary assets.
+# The two budgets bound sequential validation work and accidental huge fixtures.
+# A concurrent untrusted writer still requires an immutable/isolated checkout.
+stage_count=0
+total_bytes=0
+file_byte_limit=8388608    # 8 MiB per tracked file
+tree_byte_limit=33554432   # 32 MiB across tracked regular files
 # Reject all tracked symlinks, gitlinks, and unmerged index entries.
 # Metadata is the Git index; filename extensions alone are insufficient.
 while IFS= read -r -d '' entry; do
+  stage_count=$((stage_count + 1))
+  (( stage_count <= 50000 )) || {
+    echo 'POLICY_FAILURE: staged file count budget exceeded' >&2; exit 2;
+  }
   [[ "$entry" == *$'\t'* ]] || {
     echo 'POLICY_FAILURE: malformed index entry' >&2; exit 2;
   }
@@ -92,6 +103,21 @@ while IFS= read -r -d '' entry; do
   # outside the audited checkout, even when its raw blob matches the index.
   [[ "$(/usr/bin/realpath -e -- "$path")" == "$root/$path" ]] || {
     echo "POLICY_FAILURE: tracked file escapes checkout through parent path: $path" >&2; exit 2;
+  }
+  # Validate tracked source byte budgets BEFORE hashing potentially huge
+  # blobs, and reject malformed metadata instead of trusting shell arithmetic.
+  file_bytes="$(/usr/bin/stat -c %s -- "$path")" || {
+    echo "POLICY_FAILURE: could not stat tracked file: $path" >&2; exit 2;
+  }
+  [[ "$file_bytes" =~ ^[0-9]+$ ]] || {
+    echo "POLICY_FAILURE: invalid tracked size: $path" >&2; exit 2;
+  }
+  (( file_bytes <= file_byte_limit )) || {
+    echo "POLICY_FAILURE: tracked file exceeds 8MiB budget: $path" >&2; exit 2;
+  }
+  total_bytes=$((total_bytes + file_bytes))
+  (( total_bytes <= tree_byte_limit )) || {
+    echo "POLICY_FAILURE: tracked tree exceeds 32MiB budget" >&2; exit 2;
   }
   # A staged blob may differ from a harmless-looking worktree file. Verify
   # the exact raw bytes that Git would commit, without invoking clean filters.
@@ -157,6 +183,25 @@ while IFS= read -r -d '' path; do
     fi
   fi
 done < "$tracked_list"
+# Exact-head closure checks happen only AFTER tracked worktree verification:
+# both count and total byte budget are bounded before any Git diff can read
+# modified source. They remain mandatory and fail closed.
+if [[ -n "${EXPECTED_DEMO_SHA:-}" ]]; then
+  git_safe diff --no-ext-diff --cached --quiet HEAD -- || {
+    echo "POLICY_FAILURE: SHA-pinned audit has staged changes against HEAD" >&2; exit 2;
+  }
+  git_safe diff --no-ext-diff --quiet HEAD -- || {
+    echo "POLICY_FAILURE: SHA-pinned audit has modified tracked files" >&2; exit 2;
+  }
+  # Without --exclude-standard, ls-files --others includes ignored paths:
+  # ignored inputs must not escape an exact-source checkout audit.
+  untracked_bytes="$(git_safe ls-files --others -z -- | /usr/bin/wc -c)" || {
+    echo "POLICY_FAILURE: unable to enumerate untracked files" >&2; exit 2;
+  }
+  [[ "$untracked_bytes" -eq 0 ]] || {
+    echo "POLICY_FAILURE: SHA-pinned audit has untracked or ignored files" >&2; exit 2;
+  }
+fi
 printf 'SOURCE_POLICY_STRUCTURAL_PASS tracked_files=%s mode=%s\n' "$count" "$mode"
 if [[ "$mode" == rest-legacy ]]; then
   echo 'LEGACY_PYTHON_NONCOMPLIANT: complete Rust replacement remains required'

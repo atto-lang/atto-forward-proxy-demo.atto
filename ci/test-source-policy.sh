@@ -249,4 +249,56 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=38\n'
+
+# Pinned HEAD must reject an oversized modified tracked file through the
+# byte preflight, NOT `git diff HEAD` (which could hash unbounded bytes).
+truncate -s 8388609 "$pinned_repo/docs/allowed.txt"
+if pinned_budget_log="$(EXPECTED_DEMO_SHA="$pinned_sha" bash "$pinned_repo/ci/source-policy.sh" 2>&1)"; then
+  echo 'TEST_FAILURE: pinned oversized tracked file was accepted' >&2
+  exit 1
+fi
+grep -Fq 'POLICY_FAILURE: tracked file exceeds 8MiB budget:' <<<"$pinned_budget_log" || {
+  echo "TEST_FAILURE: pinned oversized file rejected at wrong gate: $pinned_budget_log" >&2
+  exit 1
+}
+git -C "$pinned_repo" reset --hard -q HEAD
+pinned_ok
+
+# The tracked-file verifier must reject huge inputs BEFORE hashing them.
+# A separate fixture prevents the earlier deliberately dirty index and
+# SOURCE_REF-negative cases from masking budget regressions.
+budget_repo="$test_repo/byte-budget"
+mkdir -p "$budget_repo/docs"
+git init -q "$budget_repo"
+git -C "$budget_repo" config user.name 'Budget policy fixture'
+git -C "$budget_repo" config user.email 'policy@example.invalid'
+printf 'safe\n' > "$budget_repo/docs/small.txt"
+git -C "$budget_repo" add docs/small.txt
+SOURCE_POLICY_ROOT="$budget_repo" bash "$root/ci/source-policy.sh" >/dev/null
+budget_expect_failure() {
+  local expected="$1" report
+  if report="$(SOURCE_POLICY_ROOT="$budget_repo" bash "$root/ci/source-policy.sh" 2>&1)"; then
+    echo 'TEST_FAILURE: oversized tracked source unexpectedly passed' >&2
+    exit 1
+  fi
+  grep -Fq "$expected" <<<"$report" || {
+    echo "TEST_FAILURE: wrong source-policy rejection (expected $expected): $report" >&2
+    exit 1
+  }
+}
+# Sparse file fixtures keep the adversarial Git repository cheap to create,
+# while reporting the actual logical file sizes from stat.
+truncate -s 8388609 "$budget_repo/docs/oversized.bin"
+git -C "$budget_repo" add docs/oversized.bin
+budget_expect_failure 'POLICY_FAILURE: tracked file exceeds 8MiB budget:'
+git -C "$budget_repo" rm -q -f -- docs/oversized.bin
+SOURCE_POLICY_ROOT="$budget_repo" bash "$root/ci/source-policy.sh" >/dev/null
+for i in 1 2 3 4 5; do
+  truncate -s 7340032 "$budget_repo/docs/budget-$i.bin"
+done
+git -C "$budget_repo" add docs/budget-*.bin
+budget_expect_failure 'POLICY_FAILURE: tracked tree exceeds 32MiB budget'
+git -C "$budget_repo" rm -q -f -- docs/budget-*.bin
+SOURCE_POLICY_ROOT="$budget_repo" bash "$root/ci/source-policy.sh" >/dev/null
+
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=41\n'
