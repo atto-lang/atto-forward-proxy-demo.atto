@@ -301,4 +301,4 @@ budget_expect_failure 'POLICY_FAILURE: tracked tree exceeds 32MiB budget'
 git -C "$budget_repo" rm -q -f -- docs/budget-*.bin
 SOURCE_POLICY_ROOT="$budget_repo" bash "$root/ci/source-policy.sh" >/dev/null
 
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=40\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=41\n'
