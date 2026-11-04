@@ -1,0 +1,35 @@
+import class TestCase, TestSuite, TestOptions, TestOutcome, RunSummary from "ores.std/testing";
+import fnc expect_true, expect_false, expect_equal_int, expect_equal_string, run_suite, require_success, fail from "ores.std/testing";
+import module route_policy from "../src/route_policy";
+fnc route_prefix_requires_segment_boundary(): TestOutcome {
+  return expect_true(route_policy.prefix_match("/api", "/api/v1")
+    && !route_policy.prefix_match("/api", "/apiv2"),
+    "route prefix cannot match an unrelated path segment");
+}
+fnc double_slash_route_rejected(): TestOutcome {
+  return expect_false(route_policy.prefix_match("/", "//admin"),
+    "double-leading slash paths must not inherit root route authority");
+}
+fnc prefix_rejects_relative_request(): TestOutcome {
+  return expect_false(route_policy.prefix_match("/api", "api/v1"),
+    "unrooted paths must never match proxy routing policy");
+}
+
+fnc trailing_slash_requires_real_subpath(): TestOutcome {
+  return expect_true(route_policy.prefix_match("/api/", "/api/v1")
+    && !route_policy.prefix_match("/api/", "/api"),
+    "trailing slash is meaningful in proxy prefix policy");
+}
+
+pub routine main(): void {
+  val TestSuite suite = new TestSuite("forward-proxy", arr[
+    new TestCase("route_prefix_requires_segment_boundary", route_prefix_requires_segment_boundary, false, ""),
+    new TestCase("double_slash_route_rejected", double_slash_route_rejected, false, ""),
+    new TestCase("prefix_rejects_relative_request", prefix_rejects_relative_request, false, ""),
+    new TestCase("trailing_slash_requires_real_subpath", trailing_slash_requires_real_subpath, false, "")
+  ]);
+  val TestOptions options = new TestOptions("", false, true);
+  val RunSummary summary = run_suite(rt borrow suite, rt borrow options);
+  require_success(rt borrow summary);
+  return;
+}
