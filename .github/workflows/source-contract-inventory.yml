@@ -52,11 +52,15 @@ jobs:
           bash -n ci/trusted-native-verifier.sh
           grep -Fq 'guest_tmp="$(/usr/bin/mktemp -d -- "$RUNNER_TEMP/oreslang-guest.XXXXXX")"' ci/trusted-native-verifier.sh
           grep -Fq '"TMPDIR=$guest_tmp"' ci/trusted-native-verifier.sh
+          grep -Fq 'runner_temp_root="$(/usr/bin/realpath -e -- "$RUNNER_TEMP")"' ci/trusted-native-verifier.sh
+          grep -Fq 'runner temp root must be owned by the runner account' ci/trusted-native-verifier.sh
+          grep -Fq 'runner temp root must not be group/world writable' ci/trusted-native-verifier.sh
+          grep -Fq 'runner temp root must be outside the frozen checkout' ci/trusted-native-verifier.sh
           grep -Fq 'trap cleanup_guest_tmp EXIT' ci/trusted-native-verifier.sh
           grep -Fq '/usr/bin/rm -rf -- "$guest_tmp"' ci/trusted-native-verifier.sh
           verifier_blob="$(git hash-object --no-filters -- ci/trusted-native-verifier.sh)"
           grep -Fq "test \"\$verifier_blob\" = '$verifier_blob'" .github/workflows/trusted-frozen-forward-native.yml
-          echo "TRUSTED_NATIVE_VERIFIER_SOURCE_HARDENING_PASS private_tmp=1 cleanup=1 verifier_blob=$verifier_blob"
+          echo "TRUSTED_NATIVE_VERIFIER_SOURCE_HARDENING_PASS private_tmp=1 cleanup=1 temp_root=validated verifier_blob=$verifier_blob"
       - name: Clearly separate source inventory from runtime verdict
         shell: bash
         run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
