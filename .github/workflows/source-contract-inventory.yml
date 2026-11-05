@@ -45,6 +45,16 @@ jobs:
           done
           test -z "$(find src tests config -type l -print -quit)"
           echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=9'
+      - name: Verify trusted native verifier source hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n ci/trusted-native-verifier.sh
+          grep -Fq 'guest_tmp="$(/usr/bin/mktemp -d -- "$RUNNER_TEMP/oreslang-guest.XXXXXX")"' ci/trusted-native-verifier.sh
+          grep -Fq '"TMPDIR=$guest_tmp"' ci/trusted-native-verifier.sh
+          verifier_blob="$(git hash-object --no-filters -- ci/trusted-native-verifier.sh)"
+          grep -Fq "test \"\$verifier_blob\" = '$verifier_blob'" .github/workflows/trusted-frozen-forward-native.yml
+          echo "TRUSTED_NATIVE_VERIFIER_SOURCE_HARDENING_PASS private_tmp=1 verifier_blob=$verifier_blob"
       - name: Clearly separate source inventory from runtime verdict
         shell: bash
         run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
