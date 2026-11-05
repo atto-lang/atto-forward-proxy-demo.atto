@@ -74,11 +74,26 @@ done
 # Guest process receives an explicit minimal environment, not the runner's
 # inherited CI tokens, provider secrets, Git hooks or dynamic-loader settings.
 # Forward guest needs no inherited configuration variables.
+# Give each guest invocation a private job-local temporary directory rather
+# than shared /tmp. This narrows cross-process interference on persistent
+# self-hosted runners; runner-group isolation remains an independent admin gate.
+umask 077
+guest_tmp="$(/usr/bin/mktemp -d -- "$RUNNER_TEMP/oreslang-guest.XXXXXX")" || {
+  echo "unable to create private guest temp directory" >&2
+  exit 1
+}
+test -d "$guest_tmp" && test ! -L "$guest_tmp" || exit 1
+test "$( /usr/bin/stat -c %u -- "$guest_tmp" )" = "$( /usr/bin/id -u )" || exit 1
+guest_tmp_mode="$(/usr/bin/stat -c %a -- "$guest_tmp")"
+[[ "$guest_tmp_mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$guest_tmp_mode & 8#077) == 0 )) || {
+  echo "guest temp directory is accessible outside the runner account" >&2
+  exit 1
+}
 guest_env=(
   "JAVA_HOME=$java_root"
   "PATH=$java_root/bin:/usr/bin:/bin"
   "LANG=C.UTF-8"
   "HOME=/nonexistent"
-  "TMPDIR=/tmp"
+  "TMPDIR=$guest_tmp"
 )
 exec /usr/bin/env -i "${guest_env[@]}" /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"
