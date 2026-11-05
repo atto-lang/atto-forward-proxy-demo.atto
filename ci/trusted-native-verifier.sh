@@ -96,4 +96,12 @@ guest_env=(
   "HOME=/nonexistent"
   "TMPDIR=$guest_tmp"
 )
-exec /usr/bin/env -i "${guest_env[@]}" /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"
+cleanup_guest_tmp() {
+  /usr/bin/rm -rf -- "$guest_tmp"
+}
+trap cleanup_guest_tmp EXIT
+set +e
+/usr/bin/env -i "${guest_env[@]}" /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"
+guest_status=$?
+set -e
+exit "$guest_status"
