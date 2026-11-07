@@ -26,6 +26,9 @@ pub routine main(): int {
   if control.prepare(source).is_err() || control.abort().is_err(); then
     stdio.println("FAIL abort"); return 1;
   fi
+  // Aborting a candidate cannot make it publishable or retire the live version.
+  if control.publish(2).is_ok(); then panic("aborted candidate published"); fi
+  if control.snapshot().unwrap().epoch != 2; then panic("abort retired committed epoch"); fi
   stdio.println("PASS pure generation prepare/publish/abort");
   return 0;
 }
