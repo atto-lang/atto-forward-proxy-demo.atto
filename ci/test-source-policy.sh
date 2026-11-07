@@ -78,6 +78,11 @@ ln -s hello.ores "$test_repo/src/alias.ores"
 git -C "$test_repo" add .
 check_bad
 git -C "$test_repo" rm -q -f -- src/alias.ores
+# A symlink with a non-source filename is still an unsafe tracked index entry.
+ln -s hello.ores "$test_repo/src/alias.txt"
+git -C "$test_repo" add .
+check_bad
+git -C "$test_repo" rm -q -f -- src/alias.txt
 printf 'bad\n' > "$test_repo/SOURCE_REF"
 git -C "$test_repo" add .
 check_bad
@@ -249,4 +254,4 @@ pinned_bad
 chmod -x "$pinned_repo/docs/allowed.txt"
 git -C "$pinned_repo" config --unset core.filemode
 pinned_ok
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=38\n'
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=39\n'
