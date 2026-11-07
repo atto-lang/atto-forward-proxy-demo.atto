@@ -61,6 +61,21 @@ jobs:
           verifier_blob="$(git hash-object --no-filters -- ci/trusted-native-verifier.sh)"
           grep -Fq "test \"\$verifier_blob\" = '$verifier_blob'" .github/workflows/trusted-frozen-forward-native.yml
           echo "TRUSTED_NATIVE_VERIFIER_SOURCE_HARDENING_PASS private_tmp=1 cleanup=1 temp_root=validated verifier_blob=$verifier_blob"
+      - name: Execute fail-closed source-policy adversarial fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n ci/source-policy.sh
+          bash -n ci/test-source-policy.sh
+          bash ci/test-source-policy.sh
+      - name: Audit exact PR-head source with hardened policy
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_POLICY_MODE: strict
+        run: |
+          set -euo pipefail
+          bash ci/source-policy.sh
       - name: Validate shared native evidence format (source-free negative fixtures only)
         shell: bash
         run: |
