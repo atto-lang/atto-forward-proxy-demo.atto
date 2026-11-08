@@ -250,4 +250,9 @@ done
 /bin/bash "$root/ci/test-evidence-mutation-sensitivity.sh" forward
 /bin/bash "$root/ci/test-trusted-workflow-static-admission.sh" forward
 /bin/bash "$root/ci/test-trusted-workflow-blob.sh" forward
+# AST semantics must match approved privileged workflow structure.
+/usr/bin/ruby -c "$root/ci/trusted-workflow-yaml-contract.rb" >/dev/null
+/usr/bin/ruby -c "$root/ci/test-trusted-workflow-yaml-contract.rb" >/dev/null
+/usr/bin/ruby "$root/ci/trusted-workflow-yaml-contract.rb" "$root/.github/workflows/trusted-frozen-forward-native.yml" forward
+/usr/bin/ruby "$root/ci/test-trusted-workflow-yaml-contract.rb" "$root/.github/workflows/trusted-frozen-forward-native.yml" forward
 printf 'SOURCE_FREE_NATIVE_EVIDENCE_FORMAT_TESTS_PASS positive_fixtures=3 negative_mutations=%s; native_guest=NOT_EXECUTED\n' "$negative"
