@@ -249,4 +249,10 @@ for side in forward reverse; do
 done
 /bin/bash "$root/ci/test-evidence-mutation-sensitivity.sh" forward
 /bin/bash "$root/ci/test-trusted-workflow-static-admission.sh" forward
+# Native workflow YAML must pass a real AST policy before any review promotion.
+# Missing Ruby/Psych fails closed; this remains source-free and NOT release proof.
+/usr/bin/ruby -c "$root/ci/trusted-workflow-yaml-contract.rb" >/dev/null
+/usr/bin/ruby -c "$root/ci/test-trusted-workflow-yaml-contract.rb" >/dev/null
+/usr/bin/ruby "$root/ci/trusted-workflow-yaml-contract.rb" "$root/.github/workflows/trusted-frozen-forward-native.yml" forward
+/usr/bin/ruby "$root/ci/test-trusted-workflow-yaml-contract.rb" "$root/.github/workflows/trusted-frozen-forward-native.yml" forward
 printf 'SOURCE_FREE_NATIVE_EVIDENCE_FORMAT_TESTS_PASS positive_fixtures=3 negative_mutations=%s; native_guest=NOT_EXECUTED\n' "$negative"
