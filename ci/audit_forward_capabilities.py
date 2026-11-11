@@ -36,10 +36,20 @@ def validate(raw: dict[str, str]) -> None:
                 "proxy_wire.configured_connect(", 'actor.abi != "connect-policy-v1"',
                 "actor.network_capable", "actor.epoch != snapshot.epoch"):
         if key not in plan: raise AssertionError("missing CONNECT binding gate: " + key)
-    for key in ("private constructor(", "!endpoint.dns_pinned",
-                "!endpoint.public_address", 'endpoint.port != "443"',
-                "request.ticket.epoch != snapshot.epoch"):
-        if key not in net: raise AssertionError("missing pre-dial guard: " + key)
+    if "pub define class ForwardPermit as" not in net or "pub define class ReversePermit as" not in net:
+        raise AssertionError("forward permit class missing")
+    forward_permit = net.split("pub define class ForwardPermit as", 1)[1].split("pub define class ReversePermit as", 1)[0]
+    if "private constructor(" not in forward_permit:
+        raise AssertionError("forward permit constructor broadened")
+    if "pub fnc authorize_connect(" not in net or "pub fnc authorize_reverse(" not in net:
+        raise AssertionError("per-direction admission entrypoints missing")
+    forward_dial = net.split("pub fnc authorize_connect(", 1)[1].split("pub fnc authorize_reverse(", 1)[0]
+    for key in ("!endpoint.dns_pinned", "!endpoint.public_address",
+                'endpoint.port != "443"'):
+        if key not in forward_dial:
+            raise AssertionError("missing forward pre-dial guard: " + key)
+    if "request.ticket.epoch != snapshot.epoch" not in net:
+        raise AssertionError("shared request epoch gate removed")
     if 'port != "443"' not in route or 'method != "CONNECT"' not in route:
         raise AssertionError("configured CONNECT port/method broadened")
     if 'host_header != target' not in wire:
@@ -60,7 +70,7 @@ def self_test(raw: dict[str, str]) -> None:
         ("forge_intent", 0, "actor.name, actor.target, false));", "actor.name, actor.target, true));"),
         ("bypass_role", 0, 'actor.abi != "connect-policy-v1"', "false"),
         ("bypass_network", 0, "actor.network_capable", "false"),
-        ("skip_pin", 1, "!endpoint.dns_pinned", "false"),
+        ("skip_pin", 1, "!endpoint.dns_pinned || !endpoint.public_address ||", "false || !endpoint.public_address ||"),
         ("skip_public", 1, "!endpoint.public_address", "false"),
         ("port_80", 2, 'port != "443"', 'port != "80"'),
         ("ignore_host", 3, "host_header != target", "false"),
