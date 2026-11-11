@@ -15,6 +15,7 @@ on:
       - 'ci/attolang_source_policy.sh'
       - 'ci/test_attolang_source_policy.sh'
       - 'ci/check_atto_inventory.py'
+      - 'ci/qualify_native_runtime.py'
       - 'ci/audit_forward_capabilities.py'
       - 'ci/oreslang-files.txt'
       - 'ci/pure-contracts.txt'
@@ -67,3 +68,9 @@ jobs:
           set -euo pipefail
           python3 ci/audit_forward_capabilities.py
           python3 ci/audit_forward_capabilities.py --self-test
+      - name: Test independent native qualification preflight (synthetic only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ci/qualify_native_runtime.py
+          python3 ci/qualify_native_runtime.py --self-test

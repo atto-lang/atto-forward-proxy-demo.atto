@@ -48,3 +48,9 @@ The source-policy workflow accepts pushes to the narrowly scoped `ci-mirror/atto
 ## Source-only CONNECT authority mutation gate
 
 A new pure-source audit fails if symbolic CONNECT metadata gains socket authority, loses policy actor/DNS/port checks, imports network call primitives into pure modules, or exposes the self-hosted native runner to PR heads. Eleven synthetic positive/negative mutation controls execute in source-only CI. These are not native compiler, DNS, authentication or tunneling tests.
+
+## Native AttoLang exact-tree qualification
+
+`ci/qualify_native_runtime.py` checks that a separately approved absolute launcher matches its SHA-256; the checked-out Git tree equals the independently authorized source-tree SHA; reviewed `.atto` inventories are exact; no source changed after checkout; and every invocation uses a stripped credential environment with per-invocation executable digest checks and deadlines. It requires rejection of a deliberately invalid `.atto` source before compiler-checking **every `.atto` file**, executing **every** standalone contract, and emitting final nonzero counts only on success. Syntax/negative preflight tests run without a compiler and are explicitly labeled **synthetic—not native evidence**. It does **not** authorize the use of unreviewed compiler binaries or execute PR-head code on the source organization's self-hosted runner.
+
+For an independently provisioned, restricted runner whose launcher SHA-256 has been reviewed, invoke: `python3 ci/qualify_native_runtime.py --launcher /approved/path/oreslang --sha256 <approved-64-hex> --tree <source-40-hex>` from a tree-identical checked-out mirror, never providing secrets to guest code. The launcher must actually exist at that path. Do not substitute a dummy compiler or count this as a native receipt before the program itself reports `VERIFIED_NATIVE_ATTO_GUEST_PASS` with nonzero counts.
