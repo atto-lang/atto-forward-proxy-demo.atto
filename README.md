@@ -44,3 +44,7 @@ This draft adds adversarial `.atto` contract vectors for CONNECT authority norma
 ## Exact-tree source-only CI mirror
 
 The source-policy workflow accepts pushes to the narrowly scoped `ci-mirror/atto-proxy-*` branch namespace, permitting execution from a separate **private** organization with funded GitHub-hosted Actions. It checks out only the mirror's own tree (no private upstream checkout, cross-org `GITHUB_TOKEN`, or secrets). The job prints the checked-out commit, tree and run attempt. The source repo's PR branch retains its normal `pull_request` checks. All native/self-hosted runner holds remain intact. An executed source-only pass **never** counts as compiler or live-wire evidence.
+
+## Source-only CONNECT authority mutation gate
+
+A new pure-source audit fails if symbolic CONNECT metadata gains socket authority, loses policy actor/DNS/port checks, imports network call primitives into pure modules, or exposes the self-hosted native runner to PR heads. Eleven synthetic positive/negative mutation controls execute in source-only CI. These are not native compiler, DNS, authentication or tunneling tests.

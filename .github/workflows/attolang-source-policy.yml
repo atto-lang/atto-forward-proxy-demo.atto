@@ -15,6 +15,7 @@ on:
       - 'ci/attolang_source_policy.sh'
       - 'ci/test_attolang_source_policy.sh'
       - 'ci/check_atto_inventory.py'
+      - 'ci/audit_forward_capabilities.py'
       - 'ci/oreslang-files.txt'
       - 'ci/pure-contracts.txt'
       - '.github/workflows/attolang-source-policy.yml'
@@ -60,3 +61,9 @@ jobs:
           set -euo pipefail
           python3 ci/check_atto_inventory.py
           python3 ci/check_atto_inventory.py --self-test
+      - name: Audit forward symbolic CONNECT boundary and negative mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/audit_forward_capabilities.py
+          python3 ci/audit_forward_capabilities.py --self-test
