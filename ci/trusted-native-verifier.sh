@@ -102,6 +102,10 @@ guest_tmp="$(/usr/bin/mktemp -d -- "$runner_temp_root/oreslang-guest.XXXXXX")" |
   echo "unable to create private guest temp directory" >&2
   exit 1
 }
+cleanup_guest_tmp() {
+  /usr/bin/rm -rf -- "$guest_tmp"
+}
+trap cleanup_guest_tmp EXIT
 test -d "$guest_tmp" && test ! -L "$guest_tmp" || exit 1
 test "$( /usr/bin/stat -c %u -- "$guest_tmp" )" = "$( /usr/bin/id -u )" || exit 1
 guest_tmp_mode="$(/usr/bin/stat -c %a -- "$guest_tmp")"
@@ -116,10 +120,6 @@ guest_env=(
   "HOME=/nonexistent"
   "TMPDIR=$guest_tmp"
 )
-cleanup_guest_tmp() {
-  /usr/bin/rm -rf -- "$guest_tmp"
-}
-trap cleanup_guest_tmp EXIT
 set +e
 /usr/bin/env -i "${guest_env[@]}" /usr/bin/timeout --signal=TERM --kill-after=2s 120s "$launcher" "$@"
 guest_status=$?
