@@ -40,3 +40,7 @@ The `.atto` migration requires exact source and standalone-test manifests, with 
 ## Expanded regression suite (November 10, 2026)
 
 This draft adds adversarial `.atto` contract vectors for CONNECT authority normalization, host-header equality, noncanonical ports, forged symbolic intent, and unconditional denial of guest-originated socket authority. The inventory checker has **26 synthetic positive/negative cases**, including manifest ordering/duplication, missing roots, symlinks, legacy suffixes, absolute/traversal manifests, and directory impersonation. Source-only checks do not replace actual AttoLang compiler execution. Keep the trusted native/wire jobs held pending approved runner admission.
+
+## Exact-tree source-only CI mirror
+
+The source-policy workflow accepts pushes to the narrowly scoped `ci-mirror/atto-proxy-*` branch namespace, permitting execution from a separate **private** organization with funded GitHub-hosted Actions. It checks out only the mirror's own tree (no private upstream checkout, cross-org `GITHUB_TOKEN`, or secrets). The job prints the checked-out commit, tree and run attempt. The source repo's PR branch retains its normal `pull_request` checks. All native/self-hosted runner holds remain intact. An executed source-only pass **never** counts as compiler or live-wire evidence.
