@@ -76,7 +76,7 @@ jobs:
           /usr/bin/cp -- "$approved" "$mutated"
           /usr/bin/cat >> "$mutated" <<'UNSAFE_DUPLICATE_YAML'
           listen:
-            host: 0.0.0.0
+            host: 192.0.2.123
           policy:
             deny_private: false
           UNSAFE_DUPLICATE_YAML
