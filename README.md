@@ -23,3 +23,15 @@ This README describes the demonstration's intended purpose. Current executable c
 - [AttoLang](https://github.com/atto-lang)
 - [Specification](https://github.com/atto-lang/atto-spec)
 - [Platform conformance](https://github.com/atto-lang/atto-platform-conformance)
+
+## Repository ownership and contribution routing
+
+**Belongs here:** A documented forward HTTP(S) proxy example, outbound policy checks, request relay, connection lifecycle and demo fixtures.
+
+**Belongs elsewhere:** Reverse proxy routing demo belongs in atto-reverse-proxy-demo.atto; generic HTTP routing in atto-http-routing; commercial edge services in atto-co.
+
+**Security and portability boundary:** Disable open-proxy defaults, forbid SSRF/internal metadata targets, bind outbound allowlists, auth, DNS re-resolution protections and bounded tunnel/stream quotas.
+
+AttoLang is the public name; preserve existing Oreslang/.ores compatibility and use canonical .atto for new portable library source. This README defines scope, not feature readiness.
+
+**Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
