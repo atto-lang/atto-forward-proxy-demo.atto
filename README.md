@@ -1,5 +1,13 @@
 # Oreslang forward proxy (native Oreslang)
 
+## AttoLang migration and current language specification (2026-11-18)
+
+**AttoLang** (formerly **Oreslang**) is the public language identity. This is the legacy `ores-truffle-oreslang/oreslang-forward-proxy-demo.ores` checkout. The new named counterpart is [atto-lang/atto-forward-proxy-demo.atto](https://github.com/atto-lang/atto-forward-proxy-demo.atto). A matching name or related tool does not establish transferred Git history, migrated issues/PRs, or backend parity.
+
+**[atto-spec](https://github.com/atto-lang/atto-spec)** is canonical for normative syntax, ownership, actors and effects; [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance) owns portable positive/negative guest tests and [atto-common-source](https://github.com/atto-lang/atto-common-source) owns portable `.atto` libraries. Current proposals include `snake_case`, `borrow!`/`take!`/`copy!`/`copy!!`/`share!`, [implicit argument borrowing](https://github.com/atto-lang/atto-spec/blob/main/language/implicit-argument-borrow-v1.md), [file/module constants with permitted one-time `os.read_env`](https://github.com/atto-lang/atto-spec/blob/main/language/file-module-const-v1.md), and [`<<<`/`>>>`/`ashr` bitwise shifts distinct from `<<`/`>>` streams](https://github.com/atto-lang/atto-spec/blob/main/language/bitwise-and-stream-operators-v1.md). Design documents are not guest-runtime execution proof.
+
+Keep legacy `.ores`, command, package and ABI names until independently verified migration. No Python scripts, test tools or CI helpers in new AttoLang work; Rust support tools are preferred. Require exact SHA/tree, toolchain and executed positive/negative guest tests for language parity claims; host-only/zero-step CI is **not executed** guest evidence.
+
 **Pre-release configuration/control-plane candidate, not an operational proxy.**
 
 This repository now contains native Oreslang source for strict YAML-subset admission, deterministic route and middleware policy checking, CLI status handling, and self-contained Oreslang contract tests. The network data plane, actor-generation swaps and cross-backend transport integration remain gated. Valid YAML exits 78 instead of pretending an HTTP proxy has started.
