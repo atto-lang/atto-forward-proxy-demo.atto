@@ -1,0 +1,106 @@
+import module proxy_yaml from "../src/proxy_yaml";
+import module route_policy from "../src/route_policy";
+import module middleware_policy from "../src/middleware_policy";
+
+pub routine main(): int {
+  val String document = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\n" +
+    "policy:\n  deny_private: true\n  allow_domains: example.test,api.example.test\n  connect_ports: 443\n";
+  val parsed = proxy_yaml.parse(document, "forward");
+  if parsed.is_err(); then stdio.println("FAIL valid fixture"); return 1; fi
+  val snapshot = parsed.unwrap();
+  if proxy_yaml.parse(document + "mode: forward\n", "forward").is_ok(); then
+    stdio.println("FAIL duplicate root"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("  actors: 100", "  actors: 0"), "forward").is_ok(); then
+    stdio.println("FAIL actor admission"); return 1;
+  fi
+  if !route_policy.configured_domain(rt borrow snapshot, "foo.example.test") || route_policy.configured_domain(rt borrow snapshot, "evil-example.test"); then
+    stdio.println("FAIL route/domain boundary"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("  deny_private: true", "  deny_private: false"), "forward").is_ok(); then
+    stdio.println("FAIL egress deny-private"); return 1; fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "example.test,"), "forward").is_ok(); then
+    stdio.println("FAIL empty allowlist token"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "example..test"), "forward").is_ok(); then
+    stdio.println("FAIL malformed allowlist domain"); return 1;
+  fi
+  if proxy_yaml.parse(document.replace_literal("example.test,api.example.test", "EXAMPLE.test"), "forward").is_ok(); then
+    stdio.println("FAIL noncanonical allowlist domain"); return 1;
+  fi
+  if route_policy.configured_domain(rt borrow snapshot, "x.example.test.") ||
+    route_policy.configured_domain(rt borrow snapshot, "x.example..test") ||
+    route_policy.configured_domain(rt borrow snapshot, "x.EXAMPLE.test"); then
+    stdio.println("FAIL malformed candidate domain"); return 1;
+  fi
+  if proxy_yaml.parse(document + "  # trailing comment\r\n", "forward").is_ok(); then
+    stdio.println("FAIL CR in comment"); return 1;
+  fi
+  let String domains = "example.test";
+  for (let j = 0; j < 129; j++) {
+    domains = domains + ",example.test";
+  }
+  if proxy_yaml.parse(document.replace_literal("allow_domains: example.test,api.example.test",
+      "allow_domains: " + domains), "forward").is_ok(); then
+    stdio.println("FAIL forward domain budget"); return 1;
+  fi
+  // A bounded native parser must not walk arbitrarily many comment lines.
+  let String padding = "# bounded comment\n";
+  for (let i = 0; i < 12; i++) {
+    padding = padding + padding;
+  }
+  if proxy_yaml.parse(document + padding, "forward").is_ok(); then
+    stdio.println("FAIL YAML line budget"); return 1;
+  fi
+  // Syntax checks are configuration admission only: transport must still
+  // enforce HTTP framing, pinned resolution, port bounds and TLS validation.
+  if !proxy_yaml.valid_upstream_origin("https://api.example.test:443") ||
+    !proxy_yaml.valid_upstream_origin("http://127.0.0.1:9000") ||
+    !proxy_yaml.valid_upstream_origin("http://localhost:8080"); then
+    stdio.println("FAIL canonical upstream origin"); return 1;
+  fi
+  if proxy_yaml.valid_upstream_origin("http://") ||
+    proxy_yaml.valid_upstream_origin("http:///admin") ||
+    proxy_yaml.valid_upstream_origin("http://api.example.test/admin") ||
+    proxy_yaml.valid_upstream_origin("http://user@api.example.test") ||
+    proxy_yaml.valid_upstream_origin("http://api.example.test%2Fadmin") ||
+    proxy_yaml.valid_upstream_origin("http://api.example.test:0") ||
+    proxy_yaml.valid_upstream_origin("ftp://api.example.test"); then
+    stdio.println("FAIL ambiguous upstream authority"); return 1;
+  fi
+  if !proxy_yaml.valid_header_name("x-trace-id") ||
+    proxy_yaml.valid_header_name("X-Trace-ID") ||
+    proxy_yaml.valid_header_name("x_trace") ||
+    proxy_yaml.valid_header_name("x-header:forged") ||
+    proxy_yaml.valid_header_name("-bad"); then
+    stdio.println("FAIL canonical policy header"); return 1;
+  fi
+  if !route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443") ||
+    !route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "api.example.test:443"); then
+    stdio.println("FAIL allowlisted CONNECT"); return 1;
+  fi
+  if route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:80") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "evil-example.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test.evil.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "GET",
+      "foo.example.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test@127.0.0.1:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.example.test:443:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "[::1]:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "foo.EXAMPLE.test:443") ||
+    route_policy.configured_connect(rt borrow snapshot, "CONNECT",
+      "127.0.0.1:443"); then
+    stdio.println("FAIL malformed CONNECT admitted"); return 1;
+  fi
+  stdio.println("PASS native forward YAML/policy contract");
+  return 0;
+}
