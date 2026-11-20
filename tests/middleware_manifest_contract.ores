@@ -1,0 +1,50 @@
+// Forward policy and actor middleware can bind to immutable generations.
+// No CONNECT tunnel, live admission pointer or actor spawn is asserted here.
+import module generation from "../src/generation";
+import module middleware_manifest from "../src/middleware_manifest";
+
+pub routine main(): int {
+  val String document = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\n" +
+    "policy:\n  deny_private: true\n  allow_domains: example.test\n  connect_ports: 443\n" +
+    "middleware:\n  - name: gate\n    kind: trace\n";
+  val opened = generation.open(document, "forward");
+  if opened.is_err(); then stdio.println("FAIL initial"); return 1; fi
+  val control = opened.unwrap();
+  val old = control.snapshot().unwrap();
+  val old_result = middleware_manifest.bind(rt borrow old, "egress", "gate");
+  if old_result.is_err(); then stdio.println("FAIL old egress bind"); return 1; fi
+  val old_plan = old_result.unwrap();
+  if old_plan.epoch != 1 || old_plan.first_kind() != "trace" ||
+    !old_plan.permitted("", ""); then
+    stdio.println("FAIL old egress plan"); return 1;
+  fi
+  if middleware_manifest.bind_reverse_route(rt borrow old, "example.test", "/").is_ok(); then
+    stdio.println("FAIL forward disguised as reverse"); return 1;
+  fi
+  if control.prepare(document.replace_literal("kind: trace", "kind: deny")).is_err(); then
+    stdio.println("FAIL stage"); return 1;
+  fi
+  if control.publish(0).is_ok(); then stdio.println("FAIL stale epoch"); return 1; fi
+  val published = control.publish(1);
+  if published.is_err(); then stdio.println("FAIL publish"); return 1; fi
+  val now = published.unwrap();
+  val next_result = middleware_manifest.bind(rt borrow now, "egress", "gate");
+  if next_result.is_err(); then stdio.println("FAIL new egress bind"); return 1; fi
+  val next_plan = next_result.unwrap();
+  if next_plan.epoch != 2 || next_plan.first_kind() != "deny" ||
+    next_plan.permitted("", ""); then
+    stdio.println("FAIL changed egress policy"); return 1;
+  fi
+  if old_plan.epoch != 1 || old_plan.first_kind() != "trace" ||
+    !old_plan.permitted("", ""); then
+    stdio.println("FAIL old generation mutated"); return 1;
+  fi
+  if middleware_manifest.bind(rt borrow now, "actor", "not-configured").is_ok(); then
+    stdio.println("FAIL unknown actor middleware"); return 1;
+  fi
+  if middleware_manifest.bind(rt borrow now, "actor", "gate,gate").is_ok(); then
+    stdio.println("FAIL repeated middleware in chain"); return 1;
+  fi
+  stdio.println("PASS forward generation-pinned egress/actor middleware manifests");
+  return 0;
+}

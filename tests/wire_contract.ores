@@ -1,0 +1,35 @@
+import module proxy_wire from "../src/proxy_wire";
+import module proxy_yaml from "../src/proxy_yaml";
+
+pub routine main(): int {
+  val String source = "version: ores.proxy/v1\nmode: forward\nlisten:\n  host: 127.0.0.1\n  port: 8080\nruntime:\n  carriers: 20\n  actors: 100\n  max_inflight: 1024\npolicy:\n  deny_private: true\n  allow_domains: example.test,api.example.test\n  connect_ports: 443\n";
+  val parsed = proxy_yaml.parse(source, "forward");
+  if parsed.is_err(); then stdio.println("FAIL fixture"); return 1; fi
+  val config = parsed.unwrap();
+  val allowed = proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+    "api.example.test:443");
+  if allowed.is_err(); then stdio.println("FAIL canonical CONNECT"); return 1; fi
+  if !proxy_wire.configured_connect(rt borrow config, rt borrow allowed.unwrap()); then
+    stdio.println("FAIL configured destination"); return 1;
+  fi
+  if proxy_wire.connect("CONNECT foo.evil.test:443 HTTP/1.1", "foo.evil.test:443").is_err(); then
+    stdio.println("FAIL canonical but unauthorized parse separation"); return 1;
+  fi
+  val outside = proxy_wire.connect("CONNECT foo.evil.test:443 HTTP/1.1", "foo.evil.test:443").unwrap();
+  if proxy_wire.configured_connect(rt borrow config, rt borrow outside); then
+    stdio.println("FAIL outside configured domain"); return 1;
+  fi
+  if proxy_wire.connect("CONNECT api.example.test:80 HTTP/1.1", "api.example.test:80").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1", "evil.test:443").is_ok() ||
+    proxy_wire.connect("GET http://api.example.test HTTP/1.1", "api.example.test").is_ok() ||
+    proxy_wire.connect("CONNECT user@api.example.test:443 HTTP/1.1", "user@api.example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT [::1]:443 HTTP/1.1", "[::1]:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.0", "api.example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1\r\n", "api.example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443\r\nForwarded: evil").is_ok(); then
+    stdio.println("FAIL CONNECT authority rejection"); return 1;
+  fi
+  stdio.println("PASS forward CONNECT grammar and configured-domain policy (no tunnel)");
+  return 0;
+}
