@@ -9,18 +9,18 @@ source is introduced. Read the repository README's fail-closed claims.
 
 Workerd uses capability bindings between worker services and external resources.
 Its nanoservices are cheap and isolated by the runtime. We adapt that idea:
-the trusted Oreslang supervisor parses the YAML `services` section, resolves
+the trusted AttoLang supervisor parses the YAML `services` section, resolves
 each `service://name` to a **pre-registered actor image**, and pins the resulting
 symbolic plan to one configuration generation. The actor can be single-flight
 per actor with multiplexed outstanding request lifetimes; I/O never holds a
 carrier. Permission and resource budgets are granted by the *supervisor*, not
 from a YAML string.
 
-`src/proxy_yaml.ores` now admits `services:` entries with `name`,
+`src/proxy_yaml.atto` now admits `services:` entries with `name`,
 `kind: actor` and `target`. All three identifiers are ASCII lower-case,
 digits/hyphens only; every referenced service must exist. Duplicate names,
 missing fields, unsupported kinds, whitespace, path escapes and arbitrary URL
-bindings fail. `src/service_bindings.ores` now also requires a supervisor-owned trusted
+bindings fail. `src/service_bindings.atto` now also requires a supervisor-owned trusted
 code-image registry before a YAML target can bind. YAML cannot register a code
 image or widen its capability manifest. The result remains an immutable,
 generation-scoped **symbolic descriptor**, not a runtime ActorRef or socket
@@ -33,23 +33,23 @@ contract only, not a working forward proxy.
 
 ## HAProxy and NGINX policy slices
 
-`src/load_balancer.ores` implements a **pure deterministic oracle** for
+`src/load_balancer.atto` implements a **pure deterministic oracle** for
 block-weighted round-robin and weight-adjusted least-active backend selection.
 It excludes drained/unhealthy backends, bounds weights and queue metadata,
 and returns explicit failure when no eligible destination exists.
 It is deliberately not yet an endpoint connection pool or a health checker.
 Weighted block cycling is NOT smooth weighted round-robin. No sticky hashing.
 
-`src/traffic_controls.ores` specifies actor-owned fixed-window counters
+`src/traffic_controls.atto` specifies actor-owned fixed-window counters
 and an elementary failure-threshold circuit-breaker with cooldown. These are
 reference calculations, **not** shared HAProxy stick tables, production-wide
 rate limits or live latency sensors. Half-open admits MUST require an
 exclusive supervisor-issued probe lease before network integration.
 Generation changes intentionally reset counters, and monotonic time is provided by a trusted caller, never derived from a request header.
 
-`src/network_admission.ores` composes the current request-slot lease, immutable configuration epoch, rate decision, breaker state, CONNECT allowlist, and a trusted resolver's pinned/public-address classification immediately before any future outbound transport. Its `ForwardPermit` is only a proof descriptor; the transport must not treat it as dial authority.
+`src/network_admission.atto` composes the current request-slot lease, immutable configuration epoch, rate decision, breaker state, CONNECT allowlist, and a trusted resolver's pinned/public-address classification immediately before any future outbound transport. Its `ForwardPermit` is only a proof descriptor; the transport must not treat it as dial authority.
 
-`src/network_admission.ores` composes the current request-slot lease, immutable
+`src/network_admission.atto` composes the current request-slot lease, immutable
 configuration epoch, rate decision, breaker state, CONNECT allowlist, and a
 trusted resolver's DNS-pinned/public-address classification immediately before
 a future transport would mint a socket capability. Its `ForwardPermit` is only
@@ -57,7 +57,7 @@ a proof descriptor: `std/net` MUST NOT accept it directly as dial authority.
 
 ## Future parity matrix
 
-| Feature | Oreslang status / required gate |
+| Feature | AttoLang status / required gate |
 |---|---|
 | NGINX named routes and priorities | Pure longest-prefix routing implemented; host/raw framing normalization still requires wire proof |
 | HAProxy weighted/least-active backends | Native pure selection policy, NOT socket/load-balanced traffic |
@@ -106,10 +106,10 @@ https://www.haproxy.com/documentation/
 `config/backend-example.yaml` demonstrates end-user YAML `backends:` with
 `name`, `pool`, `origin` and `weight`. For the provisional v1 format,
 weights are restricted to **1, 2, 3, 4, 5, or 10**; max 128 backends.
-Duplicate names or duplicate origin within a pool fail admission. An Oreslang
+Duplicate names or duplicate origin within a pool fail admission. An AttoLang
 reverse route can reference `pool://api`; dangling pools are rejected.
 
-`src/backend_pools.ores` compiles that YAML to the existing
+`src/backend_pools.atto` compiles that YAML to the existing
 `load_balancer.choose` policy. Supported planned choices are
 `weighted-round-robin` (deterministic block-weighted rotation) and
 `least-active` (which defaults to choosing the first configured node in
@@ -130,7 +130,7 @@ from a syntactically valid YAML origin.
 
 ## Native forward CONNECT actor authorization integration gate
 
-`src/connect_admission.ores` composes parsed CONNECT authority, the
+`src/connect_admission.atto` composes parsed CONNECT authority, the
 strictly declared egress domain allowlist and a generation-pinned symbolic
 `egress-policy` actor binding, resolved through an explicit supervisor-owned
 trusted code-image registry. It explicitly returns a *non-authorizing*
@@ -139,7 +139,7 @@ intent descriptor with `socket_authorized=false`, and the pure
 there is no guest-facing raw duplex TCP relay, verified proxy authentication,
 resolved IP pinning or transport-minted request-scoped connect token yet.
 
-`tests/connect_admission_contract.ores` rejects unregistered or
+`tests/connect_admission_contract.atto` rejects unregistered or
 network-capable policy actor images and covers canonical CONNECT,
 unauthorized hosts/ports, Host mismatch, undeclared policy actors and
 old/new configuration-generation isolation. The native self-hosted JDK25

@@ -30,6 +30,38 @@ pub routine main(): int {
       "api.example.test:443\r\nForwarded: evil").is_ok(); then
     stdio.println("FAIL CONNECT authority rejection"); return 1;
   fi
+
+  // Additional adversarial authority vectors. This pure parser is not the
+  // transport's raw duplicate-Host/framing validator.
+  if proxy_wire.connect("CONNECT api.example.test:443  HTTP/1.1",
+      "api.example.test:443").is_ok() ||
+    proxy_wire.connect("connect api.example.test:443 HTTP/1.1",
+      "api.example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:0443 HTTP/1.1",
+      "api.example.test:0443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443:443 HTTP/1.1",
+      "api.example.test:443:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443/ HTTP/1.1",
+      "api.example.test:443/").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443 ").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "API.EXAMPLE.TEST:443").is_ok() ||
+    proxy_wire.connect("CONNECT api_example.test:443 HTTP/1.1",
+      "api_example.test:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test.:443 HTTP/1.1",
+      "api.example.test.:443").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443\u0000").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443\n").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443\t").is_ok() ||
+    proxy_wire.connect("CONNECT api.example.test:443 HTTP/1.1",
+      "api.example.test:443#fragment").is_ok(); then
+    stdio.println("FAIL ambiguous CONNECT authority variants");
+    return 1;
+  fi
   stdio.println("PASS forward CONNECT grammar and configured-domain policy (no tunnel)");
   return 0;
 }

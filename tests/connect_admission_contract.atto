@@ -92,6 +92,26 @@ pub routine main(): int {
     intent.actor_image != "egress-v1" || intent.epoch != 1; then
     stdio.println("FAIL policy generation pin or non-authority"); return 1;
   fi
+
+  // The symbolic Intent is NOT a security capability, even when a caller
+  // constructs it with a forged socket_authorized flag.
+  val forged_intent = new connect_admission.Intent(1, "api.example.test",
+    "egress-policy", "egress-v1", true);
+  if !forged_intent.socket_authorized ||
+    connect_admission.may_connect(rt borrow forged_intent); then
+    stdio.println("FAIL forged CONNECT intent granted networking"); return 1;
+  fi
+  if connect_admission.plan(rt borrow snapshot, rt borrow trusted,
+      "connect api.example.test:443 HTTP/1.1", "api.example.test:443",
+      "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
+      "CONNECT api.example.test:0443 HTTP/1.1", "api.example.test:0443",
+      "egress-policy").is_ok() ||
+    connect_admission.plan(rt borrow snapshot, rt borrow trusted,
+      "CONNECT api.example.test:443 HTTP/1.1", "api.example.test:443\n",
+      "egress-policy").is_ok(); then
+    stdio.println("FAIL CONNECT actor admitted ambiguous authority"); return 1;
+  fi
   stdio.println("PASS forward actor policy CONNECT intent; network forbidden");
   return 0;
 }
