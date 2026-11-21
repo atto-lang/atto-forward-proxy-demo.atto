@@ -64,3 +64,7 @@ Integration fixtures that require a separately running listener or another proce
 ## Private-runner gate shape
 
 This private repository intentionally keeps inventory verification and native execution in one approved self-hosted job. Private GitHub-hosted jobs currently fail before step 1, so splitting a hosted preflight would only create a false red dependency. The native job therefore performs inventory completeness first, then compiler checks and pure contract execution on the same exact checked-out tree.
+
+## Pinned DNS pre-dial reference contract
+
+`tests/network_admission_contract.ores` checks generation and request-slot identity, rate/circuit denial and the trusted resolver's pinned public-address classification. Its returned `ForwardPermit` is a pure descriptor, never network dial authority; real resolver and transport tests are still required before release.

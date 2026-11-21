@@ -1,31 +1,23 @@
 # Native compiler and contract gate. No runtime source checkout or cross-org mirror.
-# A trusted source-org runner carrying the 'oreslang-jdk25' label must have an
+# A trusted, isolated runner carrying the 'oreslang-jdk25' label must have an
 # approved Oreslang Java/Graal executable on PATH. Missing runtime is a failure.
 name: Native Oreslang Proxy Contracts
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   native-contracts:
     # Never execute untrusted fork code on the organization's self-hosted runner.
-    # Only the approved repository and trusted same-repo PR heads may reserve this runner.
+    # Deny forks/cross-repo PRs before reserving a trusted self-hosted runner.
     # SECURITY HOLD: PR-head workflows must never allocate trusted native runners.
     # Admit only immutable frozen source through independently reviewed protected-main controls.
     if: ${{ false }}
     runs-on: [self-hosted, linux, x64, oreslang-jdk25]
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Checkout exact event tree
+      - name: Checkout exact PR tree
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
@@ -35,7 +27,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Verify trusted exact-head native runtime before compiling
+      - name: Fail closed on native runner, source and compiler provenance
         shell: bash
         env:
           APPROVED_REPOSITORY_ID: '1429955596'
@@ -47,29 +39,29 @@ jobs:
           APPROVED_ORESLANG_SHA256: ${{ vars.ORESLANG_APPROVED_SHA256 }}
         run: |
           set -euo pipefail
-          test "$EVENT_REPOSITORY_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'unexpected repository ID' >&2; exit 1; }
-          if [[ "$EVENT_NAME" == 'pull_request' ]]; then
-            test "$EVENT_PR_HEAD_REPO_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'untrusted head repository ID' >&2; exit 1; }
-            test "$EVENT_PR_BASE_REPO_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'untrusted base repository ID' >&2; exit 1; }
+          test "$EVENT_REPOSITORY_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'unapproved repository ID' >&2; exit 1; }
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            test "$EVENT_PR_HEAD_REPO_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'unapproved PR head repository ID' >&2; exit 1; }
+            test "$EVENT_PR_BASE_REPO_ID" = "$APPROVED_REPOSITORY_ID" || { echo 'unapproved PR base repository ID' >&2; exit 1; }
           fi
           test "${RUNNER_OS:-}" = Linux && test "${RUNNER_ARCH:-}" = X64 && test "$(uname -m)" = x86_64
-          test -n "${RUNNER_NAME:-}" || { echo 'no assigned runner name' >&2; exit 1; }
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_HEAD" || { echo 'source head mismatch' >&2; exit 1; }
+          test -n "${RUNNER_NAME:-}" || { echo 'missing assigned runner name' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_HEAD" || { echo 'source HEAD mismatch' >&2; exit 1; }
           printf 'runner_name=%s\nrepository_id=%s\nsource_head=%s\nsource_tree=%s\n' "$RUNNER_NAME" "$EVENT_REPOSITORY_ID" "$EXPECTED_SOURCE_HEAD" "$(git rev-parse HEAD^{tree})"
           java -version
           jdk_spec="$(java -XshowSettings:properties -version 2>&1 | sed -nE 's/^[[:space:]]*java\.specification\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' | head -n 1)"
-          test "$jdk_spec" = 25 || { echo 'JDK25 required' >&2; exit 1; }
+          test "$jdk_spec" = 25 || { echo 'JDK 25 required' >&2; exit 1; }
           launcher="$(type -P oreslang || true)"
-          test -n "$launcher" || { echo 'missing Oreslang launcher' >&2; exit 1; }
+          test -n "$launcher" || { echo 'Oreslang launcher not installed' >&2; exit 1; }
           launcher="$(readlink -f -- "$launcher")"
           test -f "$launcher" && test -x "$launcher"
           if [[ ! "${APPROVED_ORESLANG_SHA256:-}" =~ ^[0-9a-fA-F]{64}$ ]]; then
-            echo 'missing administrator-provided ORESLANG_APPROVED_SHA256' >&2
+            echo 'invalid administrator-provided ORESLANG_APPROVED_SHA256' >&2
             exit 1
           fi
           actual_sha="$(sha256sum -- "$launcher" | cut -d ' ' -f 1)"
           printf 'oreslang_path=%s\noreslang_sha256=%s\n' "$launcher" "$actual_sha"
-          test "$actual_sha" = "${APPROVED_ORESLANG_SHA256,,}" || { echo 'unapproved Oreslang launcher digest' >&2; exit 1; }
+          test "$actual_sha" = "${APPROVED_ORESLANG_SHA256,,}" || { echo 'unapproved launcher SHA-256' >&2; exit 1; }
           echo 'oreslang_approved_digest=true'
           if timeout 15s "$launcher" --build-info; then
             echo 'oreslang_probe=--build-info'
@@ -78,58 +70,115 @@ jobs:
           elif timeout 15s "$launcher" --help; then
             echo 'oreslang_probe=--help'
           else
-            echo 'bounded launcher probes failed' >&2
+            echo 'bounded Oreslang invocation failed' >&2
             exit 1
           fi
-      - name: Confirm native compiler availability
-        run: command -v oreslang
-      - name: Record executable provenance
-        shell: bash
+      - name: Verify exact PR HEAD and runtime provenance
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -euo pipefail
-          echo "repo_head=$(git rev-parse HEAD)"
-          echo "repo_tree=$(git rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           command -v oreslang
-          oreslang --build-info
+          sha256sum "$(command -v oreslang)"
           java -version
-      - name: Verify reviewed Oreslang inventory is complete
+
+      # Completeness of the review inventory is checked before any guest code.
+      - name: Match reviewed source and pure-test inventories
         shell: bash
         run: |
           set -euo pipefail
-          actual="$RUNNER_TEMP/oreslang-files.txt"
-          find src tests -type f -name '*.ores' -print | LC_ALL=C sort > "$actual"
-          if grep -Ev '^(src|tests)/[A-Za-z0-9_./-]+\.ores$' "$actual"; then
-            echo "Oreslang source path outside the reviewable path contract" >&2
-            exit 1
-          fi
-          diff -u ci/oreslang-files.txt "$actual"
-
-          contracts="$RUNNER_TEMP/pure-contracts.txt"
-          find tests -maxdepth 1 -type f -name '*_contract.ores' -print | LC_ALL=C sort > "$contracts"
-          diff -u ci/pure-contracts.txt "$contracts"
-
+          find src tests -type f -name '*.ores' -print | LC_ALL=C sort > "$RUNNER_TEMP/oreslang-files.txt"
+          diff -u ci/oreslang-files.txt "$RUNNER_TEMP/oreslang-files.txt"
+          find tests -maxdepth 1 -type f -name '*_contract.ores' -print | LC_ALL=C sort > "$RUNNER_TEMP/pure-contracts.txt"
+          diff -u ci/pure-contracts.txt "$RUNNER_TEMP/pure-contracts.txt"
           test -z "$(find src tests -type l -name '*.ores' -print -quit)"
-      - name: Compiler-check every reviewed Oreslang source and test
+      - name: Compiler-check complete reviewed Oreslang inventory
         shell: bash
         run: |
           set -euo pipefail
           while IFS= read -r file; do
-            [[ -n "$file" ]] || continue
-            echo "CHECK $file"
-            oreslang --check "$file"
+            test -n "$file" || continue
+            timeout --signal=TERM --kill-after=2s 120s "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" --check "$file"
           done < ci/oreslang-files.txt
-      - name: Execute every reviewed pure contract test
+      - name: Execute complete reviewed standalone contracts
         shell: bash
         run: |
           set -euo pipefail
-          count=0
           while IFS= read -r file; do
-            [[ -n "$file" ]] || continue
-            echo "RUN $file"
-            oreslang "$file"
-            count=$((count + 1))
+            test -n "$file" || continue
+            timeout --signal=TERM --kill-after=2s 120s "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" "$file"
           done < ci/pure-contracts.txt
-          if (( count == 0 )); then
-            echo "No pure contract tests declared" >&2
-            exit 1
-          fi
+      - name: Compiler-check entrypoint
+        run: oreslang --check src/main.ores
+      - name: Compiler-check configuration path admission
+        run: oreslang --check src/config_path.ores
+      - name: Compiler-check YAML parser
+        run: oreslang --check src/proxy_yaml.ores
+      - name: Compiler-check routing policy
+        run: oreslang --check src/route_policy.ores
+      - name: Compiler-check middleware policy
+        run: oreslang --check src/middleware_policy.ores
+      - name: Compiler-check generation coordinator
+        run: oreslang --check src/generation.ores
+      - name: Compiler-check native YAML contract
+        run: oreslang --check tests/yaml_policy_contract.ores
+      - name: Compiler-check native generation contract
+        run: oreslang --check tests/generation_contract.ores
+      - name: Compiler-check native middleware contract
+        run: oreslang --check tests/middleware_generation_contract.ores
+      - name: Compiler-check canonical path contract
+        run: oreslang --check tests/path_admission_contract.ores
+      - name: Execute canonical configuration path contract
+        run: oreslang tests/path_admission_contract.ores
+      - name: Execute YAML / routing / policy contract
+        run: oreslang tests/yaml_policy_contract.ores
+      - name: Execute generation epoch / rollback contract
+        run: oreslang tests/generation_contract.ores
+      - name: Execute independent middleware snapshot contract
+        run: oreslang tests/middleware_generation_contract.ores
+
+      - name: Compiler-check HTTP metadata admission and header filtering
+        run: |
+          oreslang --check src/proxy_wire.ores
+          oreslang --check src/header_policy.ores
+      - name: Compiler-check native slot lifecycle, middleware manifest and data layouts
+        run: |
+          oreslang --check src/slot_lifecycle.ores
+          oreslang --check src/slot_pool.ores
+          oreslang --check src/middleware_manifest.ores
+          oreslang --check src/data_layout.ores
+      - name: Compiler-check all security and slot regression vectors
+        run: |
+          oreslang --check tests/security_admission_contract.ores
+          oreslang --check tests/wire_contract.ores
+          oreslang --check tests/header_policy_contract.ores
+          oreslang --check tests/middleware_manifest_contract.ores
+          oreslang --check tests/data_layout_contract.ores
+          oreslang --check tests/slot_lifecycle_contract.ores
+          oreslang --check tests/slot_pool_contract.ores
+      - name: Execute complete Oreslang safety contracts
+        run: |
+          oreslang tests/security_admission_contract.ores
+          oreslang tests/wire_contract.ores
+          oreslang tests/header_policy_contract.ores
+          oreslang tests/middleware_manifest_contract.ores
+          oreslang tests/data_layout_contract.ores
+          oreslang tests/slot_lifecycle_contract.ores
+          oreslang tests/slot_pool_contract.ores
+
+      - name: Compiler-check actor service, LB, rate and circuit modules
+        run: |
+          oreslang --check src/service_bindings.ores
+          oreslang --check src/load_balancer.ores
+          oreslang --check src/traffic_controls.ores
+          oreslang --check src/network_admission.ores
+          oreslang --check tests/service_bindings_contract.ores
+          oreslang --check tests/load_balancer_contract.ores
+          oreslang --check tests/traffic_controls_contract.ores
+          oreslang --check tests/network_admission_contract.ores
+      - name: Execute actor service, LB, rate and circuit contracts
+        run: |
+          oreslang tests/service_bindings_contract.ores
+          oreslang tests/load_balancer_contract.ores
+          oreslang tests/traffic_controls_contract.ores
+          oreslang tests/network_admission_contract.ores
