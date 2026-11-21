@@ -1,0 +1,22 @@
+version: ores.proxy/v1
+mode: forward
+listen:
+  host: 127.0.0.1
+  port: 8080
+runtime:
+  carriers: 20
+  actors: 100
+  max_inflight: 1024
+policy:
+  deny_private: true
+  allow_domains: example.test
+  connect_ports: 443
+backends:
+  - name: authorization-a
+    pool: policy
+    origin: https://policy.example.test:443
+    weight: 3
+  - name: authorization-b
+    pool: policy
+    origin: https://policy2.example.test:443
+    weight: 1
