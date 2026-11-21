@@ -127,3 +127,23 @@ HTTP/1.1+2 framing; (5) health/probe and failover policy; (6) retries only
 for idempotent requests before headers commit; (7) streamed bodies with
 backpressure and request-generation pins. No such capability is inferred
 from a syntactically valid YAML origin.
+
+## Native forward CONNECT actor authorization integration gate
+
+`src/connect_admission.ores` composes parsed CONNECT authority, the
+strictly declared egress domain allowlist and a generation-pinned symbolic
+`egress-policy` actor binding, resolved through an explicit supervisor-owned
+trusted code-image registry. It explicitly returns a *non-authorizing*
+intent descriptor with `socket_authorized=false`, and the pure
+`may_connect` test cannot confer a NET capability. This is deliberate:
+there is no guest-facing raw duplex TCP relay, verified proxy authentication,
+resolved IP pinning or transport-minted request-scoped connect token yet.
+
+`tests/connect_admission_contract.ores` rejects unregistered or
+network-capable policy actor images and covers canonical CONNECT,
+unauthorized hosts/ports, Host mismatch, undeclared policy actors and
+old/new configuration-generation isolation. The native self-hosted JDK25
+workflow is updated to compile and execute that test, but a queued job is
+not successful evidence. Never turn this descriptor into permission to
+connect without authentication, DNS/IPv4/IPv6 rebinding denial, unforgeable
+scoped transport tokens, quotas and half-close tests on BOTH backends.

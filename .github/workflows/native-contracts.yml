@@ -197,3 +197,9 @@ jobs:
           "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" --check tests/network_admission_contract.ores
       - name: Execute inherited pinned-DNS pre-dial authority contract
         run: '"$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" tests/network_admission_contract.ores'
+      - name: Compiler-check authenticated-CONNECT integration staging model
+        run: |
+          "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" --check src/connect_admission.ores
+          "$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" --check tests/connect_admission_contract.ores
+      - name: Execute native forward CONNECT policy-actor denial contracts
+        run: '"$RUNNER_TEMP/oreslang-verified-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/oreslang" tests/connect_admission_contract.ores'
