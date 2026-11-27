@@ -45,6 +45,16 @@ jobs:
           done
           test -z "$(find src tests config -type l -print -quit)"
           echo 'TRACKED_SOURCE_CONTRACT_INVENTORY_PASS required_files=9'
+      - name: Run adversarial source-policy regressions
+        shell: bash
+        run: bash ci/test-source-policy.sh
+      - name: Audit exact checked-out tree with fail-closed source policy
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          bash ci/source-policy.sh
       - name: Clearly separate source inventory from runtime verdict
         shell: bash
         run: echo 'SOURCE_INVENTORY_ONLY; native compile/execute and network tests NOT_EXECUTED.'
