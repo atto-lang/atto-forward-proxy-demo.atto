@@ -13,6 +13,20 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Bounded exact-head source admission before other file reads
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_POLICY_MODE: strict
+        run: |
+          set -euo pipefail
+          # These small, fixed-size checks avoid running a symlinked/oversized
+          # source-policy script before its own tracked-file audit.
+          test -f ci/source-policy.sh
+          test ! -L ci/source-policy.sh
+          test "$(stat -c %s ci/source-policy.sh)" -le 16384
+          cmp -s ci/source-policy.sh <(git show HEAD:ci/source-policy.sh)
+          bash ci/source-policy.sh
       - name: Validate flags-2-env admission contract
         run: |
           python3 - <<'PY'
