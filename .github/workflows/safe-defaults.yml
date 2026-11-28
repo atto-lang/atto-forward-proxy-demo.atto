@@ -12,39 +12,18 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+          submodules: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Validate flags-2-env admission contract
-        run: |
-          python3 - <<'PY'
-          import tomllib
-          from pathlib import Path
-
-          p = Path(".cli-flags.toml")
-          if p.is_symlink() or not p.is_file():
-              raise SystemExit(".cli-flags.toml must be a regular file")
-          data = tomllib.loads(p.read_text())
-          flags = data.get("flags", {})
-          if set(flags) != {"config-yaml"}:
-              raise SystemExit(f"unexpected CLI flags: {sorted(flags)}")
-          row = flags["config-yaml"]
-          if row.get("env") != "ores_proxy_conf_yaml":
-              raise SystemExit("config-yaml must map exactly to ores_proxy_conf_yaml")
-          if row.get("type") != "string":
-              raise SystemExit("config-yaml must remain a string path")
-          aliases = row.get("aliases")
-          if aliases != ["config-yaml", "conf"]:
-              raise SystemExit("unexpected config-yaml aliases")
-          print("FLAGS_2_ENV_CONTRACT_PASS")
-          PY
-      - name: Validate example configuration remains loopback and deny-private
+      - name: Execute source-free canonical-default regressions
         shell: bash
         run: |
           set -euo pipefail
-          test -f config/example.yaml
-          test ! -L config/example.yaml
-          grep -Fxq 'mode: forward' config/example.yaml
-          grep -Fxq '  host: 127.0.0.1' config/example.yaml
-          grep -Fxq '  deny_private: true' config/example.yaml
-          grep -Fxq '  connect_ports: 443' config/example.yaml
-          ! grep -Eq '(^|[[:space:]])host:[[:space:]]+(0\.0\.0\.0|::|\*)$' config/example.yaml
-          echo 'SAFE_DEFAULTS_PASS: static configuration only; proxy transport NOT_EXECUTED.'
+          bash -n ci/verify-safe-defaults.sh
+          bash ci/verify-safe-defaults.sh --self-test
+      - name: Enforce exact pinned-forward defaults
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          bash ci/verify-safe-defaults.sh --verify
