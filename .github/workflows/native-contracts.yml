@@ -1,79 +1,22 @@
-# Native compiler and contract gate. No runtime source checkout or cross-org mirror.
-# A trusted, isolated runner carrying the 'oreslang-jdk25' label must have an
-# approved Oreslang Java/Graal executable on PATH. Missing runtime is a failure.
-name: Native Oreslang Proxy Contracts
+# Retired: legacy PR-head native execution is not an approved runner boundary.
+# Hosted-only manual dispatch fails deliberately; never treat as native evidence.
+# Use trusted-frozen-forward-native.yml after independent review and protected main.
+name: Legacy Native Oreslang Forward Contracts (retired, fail closed)
 on:
-  pull_request:
   workflow_dispatch:
-permissions:
-  contents: read
+permissions: {}
 jobs:
-  native-contracts:
-    # Never execute untrusted fork code on the organization's self-hosted runner.
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, oreslang-jdk25]
-    timeout-minutes: 20
+  legacy-disabled:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository_id == '1429955596' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
     steps:
-      - name: Checkout exact PR tree
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Set up JDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: '25'
-      - name: Confirm native compiler availability
-        run: command -v oreslang
-      - name: Fail on native contract inventory drift
+      - name: Refuse legacy native admission
         shell: bash
         run: |
-          set -euo pipefail
-          test -z "$(find src tests -type l -print -quit)"
-          test "$(find src -maxdepth 1 -type f -name '*.ores' | wc -l)" -eq 12
-          test "$(find tests -maxdepth 1 -type f -name '*.ores' | wc -l)" -eq 10
-      - name: Compiler-check all native proxy sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          oreslang --check src/main.ores
-          oreslang --check src/config_path.ores
-          oreslang --check src/proxy_yaml.ores
-          oreslang --check src/route_policy.ores
-          oreslang --check src/middleware_policy.ores
-          oreslang --check src/generation.ores
-          oreslang --check src/data_layout.ores
-          oreslang --check src/header_policy.ores
-          oreslang --check src/middleware_manifest.ores
-          oreslang --check src/proxy_wire.ores
-          oreslang --check src/slot_lifecycle.ores
-          oreslang --check src/slot_pool.ores
-      - name: Compiler-check all native contract sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          oreslang --check tests/path_admission_contract.ores
-          oreslang --check tests/yaml_policy_contract.ores
-          oreslang --check tests/generation_contract.ores
-          oreslang --check tests/middleware_generation_contract.ores
-          oreslang --check tests/data_layout_contract.ores
-          oreslang --check tests/header_policy_contract.ores
-          oreslang --check tests/middleware_manifest_contract.ores
-          oreslang --check tests/slot_lifecycle_contract.ores
-          oreslang --check tests/slot_pool_contract.ores
-          oreslang --check tests/wire_contract.ores
-      - name: Execute all pure native proxy contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          oreslang tests/path_admission_contract.ores
-          oreslang tests/yaml_policy_contract.ores
-          oreslang tests/generation_contract.ores
-          oreslang tests/middleware_generation_contract.ores
-          oreslang tests/data_layout_contract.ores
-          oreslang tests/header_policy_contract.ores
-          oreslang tests/middleware_manifest_contract.ores
-          oreslang tests/slot_lifecycle_contract.ores
-          oreslang tests/slot_pool_contract.ores
-          oreslang tests/wire_contract.ores
+          echo 'ERROR: legacy PR-head native workflow retired; not an Oreslang test result' >&2
+          echo 'Use protected-main trusted-frozen-forward-native after independent review' >&2
+          exit 1
